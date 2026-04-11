@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #111319;
+  --surface-low: #191b22;
+  --surface-high: #282a30;
+  --amber: #ffc174;
+  --amber-dark: #f59e0b;
+  --muted: rgba(255, 193, 116, 0.53);
+  --green: #22c55e;
+  --red: #ef4444;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  border-radius: 0 !important;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--amber);
+  font-family: 'JetBrains Mono', monospace;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: var(--surface-low);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--muted);
+}
+
+/* ── ANIMATIONS ────────────────────────────────────────────────────────────── */
+
+@keyframes floatUp {
+  0%   { opacity: 1;   transform: translateX(-50%) translateY(0);    }
+  65%  { opacity: 1;   transform: translateX(-50%) translateY(-48px); }
+  100% { opacity: 0;   transform: translateX(-50%) translateY(-72px); }
+}
+
+@keyframes shake {
+  0%,  100% { transform: translateX(0);   }
+  12%        { transform: translateX(-7px); }
+  25%        { transform: translateX(7px);  }
+  37%        { transform: translateX(-5px); }
+  50%        { transform: translateX(5px);  }
+  62%        { transform: translateX(-3px); }
+  75%        { transform: translateX(3px);  }
+  87%        { transform: translateX(-1px); }
+}
+
+@keyframes goldPulse {
+  0%   { color: var(--amber);  text-shadow: none; }
+  35%  { color: #ffffff;       text-shadow: 0 0 10px var(--amber); }
+  100% { color: var(--amber);  text-shadow: none; }
+}
+
+@keyframes bustedIn {
+	0%   { opacity: 0;    transform: scale(0.9); }
+	10%  { opacity: 1;    transform: scale(1.02); }
+	15%  { opacity: 1;    transform: scale(1); }
+	90%  { opacity: 1;    transform: scale(1); } /* Držíme plnú viditeľnosť až do 90% času */
+	100% { opacity: 0;    transform: scale(1.1); } /* Jemný zoom-out pri miznutí */
+}
+
+@keyframes scanline {
+  0%   { background-position: 0 0;    }
+  100% { background-position: 0 100px; }
+}
