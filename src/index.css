@@ -76,3 +76,37 @@ body {
   0%   { background-position: 0 0;    }
   100% { background-position: 0 100px; }
 }
+
+@keyframes heatFlicker {
+  0%,  100% { text-shadow: none; }
+  20%        { text-shadow: 1px 0 3px rgba(239,68,68,0.4); }
+  40%        { text-shadow: -1px 0 2px rgba(239,68,68,0.2); }
+  70%        { text-shadow: 1px 0 4px rgba(239,68,68,0.5); }
+}
+
+@keyframes heatFlickerExtreme {
+  0%,  100% { text-shadow: none;  color: inherit; }
+  15%        { text-shadow: 2px 0 6px rgba(239,68,68,0.7);  color: #ffaaaa; }
+  30%        { text-shadow: -2px 0 4px rgba(239,68,68,0.4); }
+  55%        { text-shadow: 1px 0 8px rgba(239,68,68,0.9);  color: #ffcccc; }
+  75%        { text-shadow: -1px 0 3px rgba(239,68,68,0.5); color: inherit; }
+}
+
+@keyframes raidBlink {
+  0%, 100% { opacity: 1;   }
+  50%       { opacity: 0.25; }
+}
+
+/* ── HEAT GLITCH STATES ─────────────────────────────────────────────────────── */
+
+.heat-critical {
+  animation: heatFlicker 4s ease infinite;
+}
+
+.heat-extreme {
+  animation: heatFlickerExtreme 2s ease infinite;
+}
+
+.raid-blink {
+  animation: raidBlink 0.8s ease infinite;
+}
