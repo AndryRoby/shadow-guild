@@ -5,10 +5,10 @@ import {
   Activity, ChevronUp, Users, ShieldOff, Star,
 } from 'lucide-react';
 import {
-  siphon, breach, deepSiphon, mainframeHack, layLow, sellCooledItems, darkMarket,
+  siphon, breach, deepSiphon, mainframeHack, layLow, sellCooledItems, darkMarket, barter, manualCool,
   buyUpgrade, buyIntelUpgrade, hireRunner, setDistrict, warpTime, prestige, tick,
   xpRequired, heatStatus, effectiveSuccessRate, calculateOfflineProgress,
-  UPGRADE_DEFS, INTEL_UPGRADE_DEFS, DISTRICTS, getUpgradeCost, getRunnerCost,
+  UPGRADE_DEFS, INTEL_UPGRADE_DEFS, DISTRICTS, CHALLENGE_DEFS, getUpgradeCost, getRunnerCost,
   DEV_MODE, SAVE_KEY, exportSave, importSave,
 } from './gameLogic.js';
 
@@ -39,9 +39,12 @@ const FRESH_STATE = {
   layLowCooldown:     0,
   bustedLockout:      0,
   feedback:           null,
+  comboCount:         0,
+  zeroMessages:       [],
   upgrades: {
     ghostProtocol: 0, neuralBoost: 0, signalDampener: 0,
-    stimPack: 0, traceEraser: 0, iceBreaker: 0, darkChannel: 0, voidDrive: 0, autoFencer: 0,
+    stimPack: 0, traceEraser: 0, iceBreaker: 0, darkChannel: 0,
+    voidDrive: 0, proxyServers: 0, quantumEncryption: 0, autoFencer: 0, aiSubroutine: 0,
   },
   intelUpgrades:      { netScanner: 0, corpMole: 0, deepSource: 0, darkExchange: 0 },
   runners:            { streetRunner: 0, dataThief: 0, infiltrator: 0, fixer: 0, shadowBroker: 0 },
@@ -49,6 +52,14 @@ const FRESH_STATE = {
   autoFencerTick:     0,
   darkMarketCooldown: 0,
   district:           'neon_strip',
+  heatSpikeTimer:     0,
+  barterCooldown:     0,
+  dailyChallenge:     null,
+  dailyFeedback:      null,
+  raidActive:         false,
+  raidTimer:          0,
+  nextRaidIn:         DEV_MODE ? 60 : 600,
+  aiSubroutineTick:   0,
 };
 
 const DEV_START = { ...FRESH_STATE, gold: 50000, reputation: 50, level: 5, runGoldEarned: 50000, totalGoldEarned: 50000 };
@@ -62,7 +73,8 @@ function loadInitialState() {
         ...FRESH_STATE,
         ...parsed,
         feedback:      null,
-        runGoldEarned: parsed.runGoldEarned ?? parsed.totalGoldEarned ?? 0,
+        runGoldEarned:  parsed.runGoldEarned ?? parsed.totalGoldEarned ?? 0,
+        zeroMessages:  parsed.zeroMessages ?? [],
         runners:       { ...FRESH_STATE.runners,       ...parsed.runners },
         runnerTick:    { ...FRESH_STATE.runnerTick,    ...parsed.runnerTick },
         upgrades:      { ...FRESH_STATE.upgrades,      ...parsed.upgrades },
@@ -85,6 +97,8 @@ function reducer(state, action) {
     case 'LAY_LOW':           return layLow(state);
     case 'SELL_COOLED_ITEMS': return sellCooledItems(state);
     case 'DARK_MARKET':       return darkMarket(state);
+    case 'BARTER':            return barter(state);
+    case 'MANUAL_COOL':       return manualCool(state);
     case 'BUY_UPGRADE':       return buyUpgrade(state, action.key);
     case 'HIRE_RUNNER':       return hireRunner(state, action.runnerType);
     case 'SET_DISTRICT':      return setDistrict(state, action.district);
@@ -273,6 +287,7 @@ function RunnerCard({ runnerType, label, count, gold, level, unlockLevel, requir
         </span>
         <span style={{ fontSize: 10, color: locked ? '#ef4444' : maxed ? '#22c55e' : 'var(--muted)' }}>
           {locked ? lockReason : `${count} / 5`}
+          {maxed && <span style={{ marginLeft: 6, color: '#ffe066', fontSize: 9, letterSpacing: '0.08rem' }}>SYNERGY</span>}
         </span>
       </div>
       <div style={{ fontSize: 10, color: 'var(--muted)', margin: '5px 0 8px' }}>
@@ -350,16 +365,23 @@ export default function App() {
   const [resetConfirm,      setResetConfirm]   = useState(false);
   const [exportString,      setExportString]   = useState('');
   const [offlineReport,     setOfflineReport]  = useState(null);
+  const [inventorySort,     setInventorySort]  = useState('TIME');
   const exportRef = useRef(null);
 
   const lastFeedbackTs = useRef(null);
   const prevGold       = useRef(0);
+  const prevRep        = useRef(0);
 
   // ── visual effect state ────────────────────────────────────────────────────
-  const [overlays,     setOverlays]     = useState([]);
-  const [shaking,      setShaking]      = useState(false);
-  const [bustedFlash,  setBustedFlash]  = useState(false);
-  const [goldPulseKey, setGoldPulseKey] = useState(0);
+  const [overlays,      setOverlays]      = useState([]);
+  const [shaking,       setShaking]       = useState(false);
+  const [bustedFlash,   setBustedFlash]   = useState(false);
+  const [goldPulseKey,  setGoldPulseKey]  = useState(0);
+  const [repPulseKey,   setRepPulseKey]   = useState(0);
+  const [glitchedEntry, setGlitchedEntry] = useState(null);
+
+  const logRef = useRef(state.log);
+  logRef.current = state.log;
 
   // ── offline progress on mount ──────────────────────────────────────────────
   useEffect(() => {
@@ -390,9 +412,9 @@ export default function App() {
     if (!state.feedback) return;
     if (state.feedback.ts === lastFeedbackTs.current) return;
     lastFeedbackTs.current = state.feedback.ts;
-    const { type, gold, item, label, ts } = state.feedback;
-    setOverlays(prev => [...prev, { id: ts, type, gold, item, label }]);
-    setTimeout(() => setOverlays(prev => prev.filter(o => o.id !== ts)), 1500);
+    const { type, gold, item, label, critical, ts } = state.feedback;
+    setOverlays(prev => [...prev, { id: ts, type, gold, item, label, critical }]);
+    setTimeout(() => setOverlays(prev => prev.filter(o => o.id !== ts)), critical ? 2000 : 1500);
     if (type === 'FAIL' || type === 'BUSTED') setShaking(true);
     if (type === 'BUSTED') {
       setBustedFlash(true);
@@ -400,11 +422,41 @@ export default function App() {
     }
   }, [state.feedback]);
 
+  // ── daily challenge complete overlay ──────────────────────────────────────
+  const lastDailyTs = useRef(null);
+  useEffect(() => {
+    if (!state.dailyFeedback) return;
+    if (state.dailyFeedback.ts === lastDailyTs.current) return;
+    lastDailyTs.current = state.dailyFeedback.ts;
+    const id = state.dailyFeedback.ts;
+    setOverlays(prev => [...prev, { id, type: 'DAILY_COMPLETE' }]);
+    setTimeout(() => setOverlays(prev => prev.filter(o => o.id !== id)), 2500);
+  }, [state.dailyFeedback]);
+
   // ── gold pulse ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (state.gold > prevGold.current) setGoldPulseKey(k => k + 1);
     prevGold.current = state.gold;
   }, [state.gold]);
+
+  // ── rep pulse ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (state.reputation > prevRep.current) setRepPulseKey(k => k + 1);
+    prevRep.current = state.reputation;
+  }, [state.reputation]);
+
+  // ── heat glitch (>= 95): corrupt a random log entry briefly ───────────────
+  useEffect(() => {
+    if (state.heat < 95) { setGlitchedEntry(null); return; }
+    const id = setInterval(() => {
+      const log = logRef.current;
+      if (log.length === 0) return;
+      const idx = Math.floor(Math.random() * Math.min(log.length, 5));
+      setGlitchedEntry(idx);
+      setTimeout(() => setGlitchedEntry(null), 200);
+    }, 3000);
+    return () => clearInterval(id);
+  }, [state.heat >= 95]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── derived ────────────────────────────────────────────────────────────────
   const effectiveMaxStamina = 100 + (state.upgrades.neuralBoost ?? 0) * 10;
@@ -447,9 +499,48 @@ export default function App() {
     heatRound >= 61 ? '#f97316' :
     heatRound >= 31 ? '#eab308' : 'var(--amber)';
 
+  const comboCount  = state.comboCount ?? 0;
+  const comboPct    = Math.min(comboCount * 0.01, 0.20);
+  const comboHigh   = comboCount >= 10;
+
+  const heatGlitchClass = heatRound >= 95 ? 'heat-extreme' : heatRound >= 80 ? 'heat-critical' : '';
+
+  // daily challenge
+  const dc             = state.dailyChallenge;
+  const dcDef          = dc ? CHALLENGE_DEFS.find(d => d.type === dc.type) : null;
+  const dcPct          = dc ? Math.min(100, (dc.current / dc.target) * 100) : 0;
+
+  // barter
+  const dataChipCount  = state.inventory.filter(i => i.id === 'DATA_CHIP').length;
+  const barterReady    = dataChipCount >= 10 && (state.barterCooldown ?? 0) === 0;
+  const barterDisabled = (state.barterCooldown ?? 0) > 0 || dataChipCount < 10 || isBlocked;
+
+  // AI subroutine countdown
+  const aiCycleSecs    = DEV_MODE ? 30 : 3600;
+  const aiRemaining    = aiCycleSecs - (state.aiSubroutineTick ?? 0);
+
+  // manual cool target
+  const hotItems       = state.inventory.filter(i => i.isHot);
+  const coolTarget     = hotItems.length > 0
+    ? hotItems.reduce((a, b) => a.cooldownRemaining > b.cooldownRemaining ? a : b)
+    : null;
+
+  // sorted inventory (display only — does not mutate state)
+  const SORT_MODES = ['TIME', 'VALUE', 'HOT/COLD'];
+  const sortedInventory = [...state.inventory].sort((a, b) => {
+    if (inventorySort === 'VALUE')    return b.gold - a.gold;
+    if (inventorySort === 'HOT/COLD') {
+      if (a.isHot !== b.isHot) return a.isHot ? 1 : -1; // cold first
+      return a.cooldownRemaining - b.cooldownRemaining;
+    }
+    // TIME: shortest cooldown first (closest to cold), cold items last
+    if (a.isHot !== b.isHot) return a.isHot ? -1 : 1;
+    return a.cooldownRemaining - b.cooldownRemaining;
+  });
+
   // ── render ─────────────────────────────────────────────────────────────────
   return (
-    <div style={S.root}>
+    <div style={S.root} className={heatGlitchClass}>
 
       {/* ── BUSTED FLASH — rendered via portal, no parent clipping ── */}
       {bustedFlash && createPortal(
@@ -476,6 +567,24 @@ export default function App() {
         document.body
       )}
 
+      {/* ── RAID BANNER ── */}
+      {state.raidActive && createPortal(
+        <div className="raid-blink" style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9998,
+          background: '#450a0a', borderBottom: '2px solid #ef4444',
+          padding: '7px 16px', display: 'flex', justifyContent: 'center',
+          pointerEvents: 'none',
+        }}>
+          <span style={{
+            fontFamily: '"JetBrains Mono", monospace', fontSize: 11,
+            color: '#fca5a5', letterSpacing: '0.12rem', fontWeight: 700,
+          }}>
+            !! POLICE RAID :: LAY LOW IN {state.raidTimer}s OR LOSE 30% CREDITS !!
+          </span>
+        </div>,
+        document.body
+      )}
+
       {/* ── OFFLINE POPUP ── */}
       <OfflinePopup
         report={offlineReport}
@@ -487,21 +596,31 @@ export default function App() {
         <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 50 }}>
           {overlays.map(o => (
             <div key={o.id} style={{
-              position: 'absolute', top: '36%', left: '74%',
-              animation: 'floatUp 1.5s ease forwards',
+              position: 'absolute', top: o.critical ? '30%' : '36%', left: '74%',
+              animation: `floatUp ${o.critical ? '2s' : '1.5s'} ease forwards`,
               fontFamily: '"JetBrains Mono", monospace',
-              fontWeight: 700, fontSize: o.type === 'BUSTED' ? 0 : 14,
+              fontWeight: 700,
+              fontSize: o.type === 'BUSTED' ? 0 : o.critical ? 20 : o.type === 'DAILY_COMPLETE' ? 13 : 14,
               letterSpacing: '0.06rem', whiteSpace: 'nowrap',
               color:
-                o.type === 'SUCCESS' ? 'var(--amber)' :
-                o.type === 'UPGRADE' ? '#22c55e' : '#ef4444',
+                o.critical              ? '#ffe066' :
+                o.type === 'SUCCESS'    ? 'var(--amber)' :
+                o.type === 'UPGRADE'    ? '#22c55e' :
+                o.type === 'DAILY_COMPLETE' ? '#22c55e' : '#ef4444',
               textShadow:
-                o.type === 'SUCCESS' ? '0 0 14px rgba(255,193,116,0.9)' :
-                o.type === 'UPGRADE' ? '0 0 14px rgba(34,197,94,0.9)' :
+                o.critical              ? '0 0 20px #ffe066, 0 0 40px rgba(255,224,102,0.6)' :
+                o.type === 'SUCCESS'    ? '0 0 14px rgba(255,193,116,0.9)' :
+                o.type === 'UPGRADE'    ? '0 0 14px rgba(34,197,94,0.9)' :
+                o.type === 'DAILY_COMPLETE' ? '0 0 14px rgba(34,197,94,0.9)' :
                 '0 0 14px rgba(239,68,68,0.9)',
             }}>
-              {o.type === 'SUCCESS' ? `+${o.gold} CR  ${o.item}` :
-               o.type === 'UPGRADE' ? `+1 ${o.label}` : '>> TRACED'}
+              {o.type === 'SUCCESS'
+                ? o.critical
+                  ? `!! CRITICAL !!  +${o.gold} CR`
+                  : `+${o.gold} CR  ${o.item}`
+                : o.type === 'UPGRADE'       ? `+1 ${o.label}`
+                : o.type === 'DAILY_COMPLETE' ? '[DAILY COMPLETE]'
+                : '>> TRACED'}
             </div>
           ))}
         </div>,
@@ -554,7 +673,15 @@ export default function App() {
 
             <div style={S.statRow}>
               <span style={S.statKey}><Icon component={ShieldOff} />REP</span>
-              <span style={S.statVal}>{state.reputation.toLocaleString()}</span>
+              <span key={repPulseKey} style={{
+                ...S.statVal,
+                animation: repPulseKey > 0 ? 'goldPulse 1s ease forwards' : 'none',
+              }}>
+                {state.reputation.toLocaleString()}
+              </span>
+            </div>
+            <div style={{ fontSize: 9, color: 'var(--muted)', marginBottom: 4, letterSpacing: '0.04rem' }}>
+              earn via: SIPHON +1 · BREACH +3 · HACK +8 · BARTER +1
             </div>
 
             <div style={S.statRow}>
@@ -576,9 +703,22 @@ export default function App() {
 
             <div style={S.statRow}>
               <span style={S.statKey}><Icon component={Flame} color={heatColor} />HEAT</span>
-              <span style={{ ...S.statVal, color: heatColor }}>{heatRound}% [{heatStat}]</span>
+              <span style={{ ...S.statVal, color: heatColor }}>
+                {heatRound}% [{heatStat}]
+                {(state.heatSpikeTimer ?? 0) > 0 && (
+                  <span style={{ marginLeft: 8, fontSize: 9, color: '#ef4444', letterSpacing: '0.06rem' }}>
+                    SPIKE [{state.heatSpikeTimer}s]
+                  </span>
+                )}
+              </span>
             </div>
             <Bar pct={heatRound} color={heatColor} />
+
+            {(state.upgrades.aiSubroutine ?? 0) >= 1 && (
+              <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 3, letterSpacing: '0.05rem' }}>
+                AI_CLEAN :: [{fmtDuration(aiRemaining)}]
+              </div>
+            )}
 
             {/* District */}
             <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--surface-high)' }}>
@@ -663,6 +803,22 @@ export default function App() {
             {/* ── OPS TAB ── */}
             {activeTab === 'OPERATIONS' && (
               <>
+                {/* Raid alert */}
+                {state.raidActive && (
+                  <div className="raid-blink" style={{
+                    marginBottom: 8, padding: '6px 10px',
+                    background: '#450a0a', border: '1px solid #ef4444',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  }}>
+                    <span style={{ fontSize: 10, color: '#fca5a5', fontWeight: 700, letterSpacing: '0.08rem' }}>
+                      !! RAID ALERT
+                    </span>
+                    <span style={{ fontSize: 11, color: '#ef4444', fontWeight: 700 }}>
+                      [{state.raidTimer}s]
+                    </span>
+                  </div>
+                )}
+
                 {/* District selector */}
                 <div style={{ display: 'flex', gap: 2, marginBottom: 12 }}>
                   {Object.entries(DISTRICTS).map(([key, dist]) => {
@@ -691,6 +847,28 @@ export default function App() {
                       </button>
                     );
                   })}
+                </div>
+
+                {/* ── COMBO METER — fixed height so buttons never shift ── */}
+                <div style={{
+                  height: 28, marginBottom: 4, display: 'flex', alignItems: 'center',
+                  padding: '0 10px', gap: 6,
+                  background: comboCount > 0 ? 'var(--surface-high)' : 'transparent',
+                  border: comboCount > 0 ? `1px solid ${comboHigh ? '#ffc174' : 'var(--muted)'}` : '1px solid transparent',
+                  transition: 'border-color 0.15s',
+                }}>
+                  {comboCount > 0 && (<>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, letterSpacing: '0.1rem',
+                      color: comboHigh ? '#ffc174' : 'var(--muted)',
+                      animation: comboHigh ? 'goldPulse 1.2s ease infinite' : 'none',
+                    }}>
+                      COMBO x{comboCount}
+                    </span>
+                    <span style={{ fontSize: 10, color: 'var(--muted)' }}>
+                      [+{Math.round(comboPct * 100)}% VALUE]
+                    </span>
+                  </>)}
                 </div>
 
                 <ProtoBtn onClick={() => dispatch({ type: 'SIPHON' })}
@@ -747,6 +925,17 @@ export default function App() {
                   }
                 </ProtoBtn>
 
+                <ProtoBtn onClick={() => dispatch({ type: 'MANUAL_COOL' })}
+                  disabled={hotItems.length === 0 || state.stamina < 5}>
+                  COOL_DOWN_ [-15s · 5 STA]
+                  {coolTarget
+                    ? <span style={{ marginLeft: 8, fontSize: 10, color: 'var(--muted)' }}>
+                        COOLING: [{coolTarget.id}] [{fmtCooldown(coolTarget.cooldownRemaining)}]
+                      </span>
+                    : <span style={{ marginLeft: 8, fontSize: 10, color: 'var(--muted)' }}>[NO HOT ITEMS]</span>
+                  }
+                </ProtoBtn>
+
                 <ProtoBtn onClick={() => dispatch({ type: 'DARK_MARKET' })} disabled={dmDisabled}>
                   DARK_MARKET_
                   {dmLocked
@@ -758,6 +947,47 @@ export default function App() {
                     : <span style={{ marginLeft: 8, fontSize: 11, color: '#f97316' }}>[+{allValue.toLocaleString()} CR · 60%]</span>
                   }
                 </ProtoBtn>
+
+                <ProtoBtn onClick={() => dispatch({ type: 'BARTER' })} disabled={barterDisabled}>
+                  BARTER_ [10x DATA_CHIP → +1 REP]
+                  {(state.barterCooldown ?? 0) > 0
+                    ? <span style={{ marginLeft: 8, fontSize: 10, color: 'var(--muted)' }}>[CD: {fmtDuration(state.barterCooldown)}]</span>
+                    : dataChipCount < 10
+                    ? <span style={{ marginLeft: 8, fontSize: 10, color: 'var(--muted)' }}>[{dataChipCount}/10 CHIPS]</span>
+                    : barterReady
+                    ? <span style={{ marginLeft: 8, fontSize: 10, color: '#22c55e' }}>[READY]</span>
+                    : null
+                  }
+                </ProtoBtn>
+
+                {/* ── DAILY CHALLENGE ── */}
+                {dc && (
+                  <div style={{
+                    marginTop: 10, padding: '8px 10px',
+                    background: 'var(--surface-high)',
+                    border: `1px solid ${dc.completed ? '#22c55e' : 'var(--muted)'}`,
+                  }}>
+                    <div style={{ fontSize: 10, letterSpacing: '0.08rem', color: 'var(--muted)', marginBottom: 4 }}>
+                      DAILY CHALLENGE
+                    </div>
+                    <div style={{ fontSize: 11, color: dc.completed ? '#22c55e' : 'var(--amber)', marginBottom: 5 }}>
+                      {dcDef?.desc ?? dc.type}
+                    </div>
+                    <div style={{ ...S.track, marginBottom: 5 }}>
+                      <div style={{ ...S.fill, width: `${dcPct}%`, background: dc.completed ? '#22c55e' : 'var(--amber)' }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--muted)' }}>
+                      <span>
+                        {dc.completed ? 'COMPLETE' : `${dc.type === 'SELL_VALUE' ? dc.current.toLocaleString() : dc.current} / ${dc.type === 'SELL_VALUE' ? dc.target.toLocaleString() : dc.target}`}
+                      </span>
+                      <span style={{ color: dc.completed ? '#22c55e' : 'var(--amber)' }}>
+                        {dc.reward.rep > 0 ? `+${dc.reward.rep} REP` : ''}
+                        {dc.reward.rep > 0 && dc.reward.gold > 0 ? ' · ' : ''}
+                        {dc.reward.gold > 0 ? `+${dc.reward.gold} CR` : ''}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {DEV_MODE && (
                   <button onClick={() => dispatch({ type: 'WARP_TIME' })} style={{
@@ -994,12 +1224,38 @@ export default function App() {
               {coldCount > 0 && <span style={{ color: '#22c55e', marginLeft: 8 }}>· {coldCount} COLD</span>}
               {invFull && <span style={{ color: '#ef4444', marginLeft: 8 }}>[FULL]</span>}
             </span>
+            {state.inventory.length > 0 && (
+              <button onClick={() => setInventorySort(m => {
+                const i = SORT_MODES.indexOf(m);
+                return SORT_MODES[(i + 1) % SORT_MODES.length];
+              })} style={{
+                marginLeft: 'auto', background: 'transparent',
+                border: '1px solid var(--muted)', color: 'var(--muted)',
+                fontFamily: '"JetBrains Mono", monospace', fontSize: 8,
+                letterSpacing: '0.08rem', padding: '2px 6px', cursor: 'pointer',
+              }}>
+                SORT: [{inventorySort}]
+              </button>
+            )}
           </div>
-          {state.inventory.map(item => (
+          {sortedInventory.map(item => {
+            const rarity = item.gold > 300 ? { label: 'LEGENDARY', color: '#ffd700', pulse: true }
+                         : item.gold > 100 ? { label: 'RARE',      color: '#b347ff', pulse: false }
+                         : item.gold > 20  ? { label: 'UNCOMMON',  color: '#00d4ff', pulse: false }
+                         :                   { label: 'COMMON',    color: 'var(--amber)', pulse: false };
+            return (
             <div key={item.instanceId} style={S.itemRow}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Icon component={Cpu} size={10} color={item.isHot ? '#f97316' : '#22c55e'} />
-                <span style={{ letterSpacing: '0.04rem', fontSize: 12 }}>{item.id}</span>
+                <div>
+                  <span style={{
+                    letterSpacing: '0.04rem', fontSize: 12, color: rarity.color,
+                    animation: rarity.pulse ? 'goldPulse 2s ease infinite' : 'none',
+                  }}>{item.id}</span>
+                  <span style={{ marginLeft: 6, fontSize: 8, color: rarity.color, opacity: 0.7, letterSpacing: '0.06rem' }}>
+                    {rarity.label}
+                  </span>
+                </div>
               </div>
               <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
                 <span style={{ ...S.muted, fontSize: 11 }}>{item.gold} CR</span>
@@ -1008,7 +1264,8 @@ export default function App() {
                 </span>
               </div>
             </div>
-          ))}
+            );
+          })}
           {state.inventory.length === 0 && (
             <span style={{ color: 'rgba(255,193,116,0.2)', fontSize: 11 }}>... INVENTORY EMPTY ...</span>
           )}
@@ -1025,33 +1282,55 @@ export default function App() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {state.log.length === 0
               ? <span style={{ color: 'rgba(255,193,116,0.2)', fontSize: 11 }}>... AWAITING_PROTOCOL ...</span>
-              : state.log.map((entry, i) => (
-                <div key={i} style={{
-                  ...S.logEntry,
-                  color:
-                    entry.includes('[BUSTED]')    ? '#ef4444'      :
-                    entry.includes('PRESTIGE')    ? '#f97316'      :
-                    entry.includes('LEVEL UP')    ? 'var(--amber)' :
-                    entry.includes('SOLD')        ? '#22c55e'      :
-                    entry.includes('UPGRADE')     ? '#22c55e'      :
-                    entry.includes('HIRED')       ? '#22c55e'      :
-                    entry.includes('AUTO_FENCER') ? '#22c55e'      :
-                    entry.includes('OFFLINE')     ? 'var(--amber)' :
-                    entry.includes('RESTORED')    ? 'var(--amber)' :
-                    entry.includes('RESET')       ? '#ef4444'      :
-                    entry.includes('RUNNER')      ? '#f97316'      :
-                    entry.includes('THIEF')       ? '#f97316'      :
-                    entry.includes('INFILTRATOR') ? '#f97316'      :
-                    entry.includes('FIXER')       ? '#f97316'      :
-                    entry.includes('BROKER')      ? '#f97316'      :
-                    entry.includes('INTEL')       ? '#22c55e'      :
-                    entry.includes('DEV:')        ? '#22c55e'      :
-                    entry.includes('FAILED') || entry.includes('ABORTED') ? '#f97316' :
-                    'var(--muted)',
-                }}>
-                  {entry}
-                </div>
-              ))
+              : state.log.map((entry, i) => {
+                const isZero    = entry.includes('[ZERO >>]');
+                const isCrit    = entry.includes('CRITICAL EXTRACTION');
+                const isGlitch  = i === glitchedEntry;
+                const glitched  = isGlitch
+                  ? entry.replace(/[A-Z]/g, (c, idx) => idx % 7 === 0 ? '█' : c)
+                  : entry;
+
+                const color =
+                  isZero               ? '#ffc174'      :
+                  isCrit               ? '#ffe066'      :
+                  entry.includes('[BUSTED]')    ? '#ef4444'      :
+                  entry.includes('PRESTIGE')    ? '#f97316'      :
+                  entry.includes('LEVEL UP')    ? 'var(--amber)' :
+                  entry.includes('SOLD')        ? '#22c55e'      :
+                  entry.includes('UPGRADE')     ? '#22c55e'      :
+                  entry.includes('HIRED')       ? '#22c55e'      :
+                  entry.includes('AUTO_FENCER') ? '#22c55e'      :
+                  entry.includes('OFFLINE')     ? 'var(--amber)' :
+                  entry.includes('RESTORED')    ? 'var(--amber)' :
+                  entry.includes('RESET')       ? '#ef4444'      :
+                  entry.includes('RUNNER')      ? '#f97316'      :
+                  entry.includes('THIEF')       ? '#f97316'      :
+                  entry.includes('INFILTRATOR') ? '#f97316'      :
+                  entry.includes('FIXER')       ? '#f97316'      :
+                  entry.includes('BROKER')      ? '#f97316'      :
+                  entry.includes('INTEL')       ? '#22c55e'      :
+                  entry.includes('DEV:')        ? '#22c55e'      :
+                  entry.includes('FAILED') || entry.includes('ABORTED') ? '#f97316' :
+                  'var(--muted)';
+
+                if (isZero) {
+                  // split timestamp + [ZERO >>] prefix from message body
+                  const zeroIdx = glitched.indexOf('[ZERO >>]');
+                  const prefix  = glitched.slice(0, zeroIdx + '[ZERO >>]'.length);
+                  const body    = glitched.slice(zeroIdx + '[ZERO >>]'.length);
+                  return (
+                    <div key={i} style={{ ...S.logEntry }}>
+                      <span style={{ color: '#ffc174', fontWeight: 700 }}>{prefix}</span>
+                      <span style={{ color: 'rgba(255,193,116,0.7)' }}>{body}</span>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={i} style={{ ...S.logEntry, color }}>
+                    {glitched}
+                  </div>
+                );
+              })
             }
           </div>
         </div>
