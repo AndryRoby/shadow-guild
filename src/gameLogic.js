@@ -39,9 +39,13 @@ const DEEP_SIPHON_LOOT = [
 ];
 
 export const VAULT_LOOT = [
-  { id: 'CRYPTO_WALLET',      gold: 400,  xp: 200, weight: 40, cooldown: 900  },
-  { id: 'CORP_RESERVE',       gold: 800,  xp: 350, weight: 35, cooldown: 1800 },
-  { id: 'MASTER_ACCESS_CODE', gold: 1500, xp: 600, weight: 25, cooldown: 3600 },
+  { id: 'CRYPTO_WALLET',                    gold: 400,  xp: 200, weight: 40, cooldown: 900  },
+  { id: 'CORP_RESERVE',                     gold: 800,  xp: 350, weight: 35, cooldown: 1800 },
+  { id: 'MASTER_ACCESS_CODE',               gold: 1500, xp: 600, weight: 25, cooldown: 3600 },
+  { id: 'ENCRYPTED_BIOWEAPON_SCHEMATICS',   gold: 800,  xp: 350, weight: 5,  cooldown: 1800 },
+  { id: 'CEO_NEURAL_BACKUP',                gold: 1200, xp: 500, weight: 3,  cooldown: 2400 },
+  { id: 'AETHER_BIOTECH_MASTER_KEY',        gold: 1500, xp: 600, weight: 2,  cooldown: 3000 },
+  { id: 'THE_EYE_SOURCE_CODE',              gold: 2000, xp: 800, weight: 1,  cooldown: 3600 },
 ];
 
 // IDs that trigger a heat spike (tier 3+ loot)
@@ -49,6 +53,7 @@ const HIGH_VALUE_IDS = new Set([
   'BIOMETRIC_KEY', 'CORP_BADGE', 'NEURAL_TOKEN',
   'SECURE_TERMINAL', 'CLASSIFIED_DOSSIER', 'CORP_BLUEPRINT', 'EXECUTIVE_KEYCARD',
   'CRYPTO_WALLET', 'CORP_RESERVE', 'MASTER_ACCESS_CODE',
+  'ENCRYPTED_BIOWEAPON_SCHEMATICS', 'CEO_NEURAL_BACKUP', 'AETHER_BIOTECH_MASTER_KEY', 'THE_EYE_SOURCE_CODE',
 ]);
 
 export const CHALLENGE_DEFS = [
@@ -59,7 +64,17 @@ export const CHALLENGE_DEFS = [
   { type: 'COMBO_REACH',  desc: 'Reach combo x10',                     target: 10,   reward: { rep: 20, gold: 200 } },
 ];
 
+export const ACHIEVEMENT_DEFS = [
+  { id: 'GHOST',        desc: '50 siphons without getting busted',             reward: { rep: 25  } },
+  { id: 'UNTOUCHABLE',  desc: 'Reach Level 5 without getting busted this run', reward: { rep: 50  } },
+  { id: 'COMBO_KING',   desc: 'Reach combo x15',                               reward: { gold: 200 } },
+  { id: 'FIRST_BLOOD',  desc: 'Land your first critical strike',               reward: { gold: 100 } },
+  { id: 'DATA_HOARDER', desc: 'Fill inventory to maximum capacity',            reward: { rep: 10  } },
+];
+
 const BARTER_CD      = DEV_MODE ? 10   : 300;
+const ENC_KEY_CHANCE = 0.03; // 3% per successful action
+const ENC_KEY_IDS    = ['KEY_ALPHA', 'KEY_BETA', 'KEY_GAMMA', 'KEY_DELTA', 'KEY_EPSILON'];
 const AI_SUBROUTINE_CYCLE = DEV_MODE ? 30  : 3600;
 const RAID_CD_MIN    = DEV_MODE ? 60   : 480;   // 8 min
 const RAID_CD_MAX    = DEV_MODE ? 60   : 900;   // 15 min
@@ -97,7 +112,8 @@ export const UPGRADE_DEFS = [
   { key: 'proxyServers',     label: 'PROXY_SERVERS',     baseCost: 400, max: 5, effect: 'Bust threshold +10 / lvl (default 100)' },
   { key: 'quantumEncryption',label: 'QUANTUM_ENCRYPTION',baseCost: 800, max: 1, effect: 'On BUSTED: save 20% of inventory'        },
   { key: 'autoFencer',       label: 'AUTO_FENCER',       baseCost: 500, max: 1, effect: 'Auto-sell cold items every 30s'          },
-  { key: 'aiSubroutine',    label: 'AI_SUBROUTINE',     baseCost: 600, max: 1, effect: 'Every 60min: auto-reduce heat by 25'       },
+  { key: 'aiSubroutine',    label: 'AI_SUBROUTINE',     baseCost: 600,  max: 1, effect: 'Every 60min: auto-reduce heat by 25'       },
+  { key: 'hwOverclock',     label: 'HW_OVERCLOCK',      baseCost: 1000, max: 3, effect: 'Runners +15% speed · Heat x1.5/cycle / lvl' },
 ];
 
 export const INTEL_UPGRADE_DEFS = [
@@ -165,6 +181,8 @@ const ZERO = {
   first_prestige: "New iteration. Same city. You remember more than you should.",
   gold_10k:       "Money means nothing here. REP means everything.",
   betrayal:       "Someone talked. Check your roster.",
+  enc_key_set:    "Collect all five. What they unlock will change everything.",
+  bounty:         "They put a price on your head. Lay low.",
 };
 
 function addZero(state, key) {
@@ -175,6 +193,44 @@ function addZero(state, key) {
     zeroMessages: [...zm, key],
     log: addLog(state.log, `[ZERO >>] ${ZERO[key]}`),
   };
+}
+
+// ── ENCRYPTION KEY HELPERS ────────────────────────────────────────────────────
+
+// Returns updated state after potentially dropping a random enc key (3% chance)
+function tryDropEncKey(state) {
+  if (Math.random() >= ENC_KEY_CHANCE) return state;
+  const existing = (state.encKeys ?? []);
+  const missing  = ENC_KEY_IDS.filter(k => !existing.includes(k));
+  if (missing.length === 0) return state; // all keys already owned
+  const key      = missing[Math.floor(Math.random() * missing.length)];
+  const newKeys  = [...existing, key];
+  const uniqueCount = newKeys.length;
+  let next = {
+    ...state,
+    encKeys: newKeys,
+    log: addLog(state.log, `:: ENCRYPTION_KEY :: ${key} acquired :: [${uniqueCount}/5 unique]`),
+  };
+  // Hint ZERO message when first key or when all 5 collected
+  if (uniqueCount === 1) next = addZero(next, 'enc_key_set');
+  return next;
+}
+
+export function decrypt(state) {
+  const keys = state.encKeys ?? [];
+  if (ENC_KEY_IDS.some(k => !keys.includes(k))) return state; // not all 5
+  const income = applyIncome(state, 500);
+  let next = {
+    ...state,
+    encKeys:    [],
+    gold:       income.gold,
+    totalGoldEarned: income.totalGoldEarned,
+    runGoldEarned:   income.runGoldEarned,
+    reputation: state.reputation + 20,
+    log: addLog(state.log, ':: DECRYPT :: ALL KEYS CONSUMED :: +500 CR :: +20 REP'),
+  };
+  next = addZero(next, 'enc_key_set');
+  return next;
 }
 
 // ── DAILY CHALLENGE HELPERS ───────────────────────────────────────────────────
@@ -247,13 +303,14 @@ export function heatStatus(heat) {
   return 'CLEAR';
 }
 
-export function effectiveSuccessRate(baseRate, level, levelBonus, heat, ghostProtocol = 0) {
+export function effectiveSuccessRate(baseRate, level, levelBonus, heat, ghostProtocol = 0, bountyActive = false) {
   const heatPenalty =
     heat >= 81 ? 0.40 :
     heat >= 61 ? 0.25 :
     heat >= 31 ? 0.10 : 0;
-  const gp = (baseRate === 0.70 || baseRate === 0.65) ? ghostProtocol * 0.02 : 0;
-  return Math.min(0.95, baseRate + (level - 1) * levelBonus + gp - heatPenalty);
+  const gp          = (baseRate === 0.70 || baseRate === 0.65) ? ghostProtocol * 0.02 : 0;
+  const bountyPen   = bountyActive ? 0.20 : 0;
+  return Math.min(0.95, Math.max(0.05, baseRate + (level - 1) * levelBonus + gp - heatPenalty - bountyPen));
 }
 
 // ── PRIVATE HELPERS ───────────────────────────────────────────────────────────
@@ -296,14 +353,17 @@ function applyBustedCheck(state) {
     : ':: INVENTORY LOST';
   let next = {
     ...state,
-    heat:           0,
-    inventory:      savedInventory,
-    layLowActive:   false,
-    layLowTimer:    0,
-    comboCount:     0,
-    heatSpikeTimer: 0,
-    bustedLockout:  lockout,
-    feedback:       { type: 'BUSTED', ts: Date.now() },
+    heat:              0,
+    inventory:         savedInventory,
+    layLowActive:      false,
+    layLowTimer:       0,
+    comboCount:        0,
+    heatSpikeTimer:    0,
+    bountyActive:      false,
+    bustedLockout:     lockout,
+    siphonsWithoutBust: 0,
+    everBustedThisRun:  true,
+    feedback:          { type: 'BUSTED', ts: Date.now() },
     log: addLog(state.log, `:: [BUSTED] ${MSG.busted()} ${invMsg} :: ${lockout}s LOCKOUT`),
   };
   next = addZero(next, 'first_busted');
@@ -320,7 +380,10 @@ function checkLevelUp(state) {
     log:   addLog(state.log, `:: LEVEL UP → LEVEL ${state.level + 1}`),
   };
   if (next.level === 3) next = addZero(next, 'level_3');
-  if (next.level === 5) next = addZero(next, 'level_5');
+  if (next.level === 5) {
+    next = addZero(next, 'level_5');
+    if (!(next.everBustedThisRun ?? false)) next = checkAchievement(next, 'UNTOUCHABLE');
+  }
   return checkLevelUp(next);
 }
 
@@ -333,6 +396,25 @@ function applyIncome(state, amount) {
     runGoldEarned:   (state.runGoldEarned   ?? 0) + earned,
     _earned:         earned,
   };
+}
+
+function checkAchievement(state, id) {
+  if ((state.achievements ?? {})[id]) return state;
+  const def = ACHIEVEMENT_DEFS.find(d => d.id === id);
+  if (!def) return state;
+  let s = { ...state, achievements: { ...(state.achievements ?? {}), [id]: true } };
+  if (def.reward.rep) s = { ...s, reputation: s.reputation + def.reward.rep };
+  if (def.reward.gold) {
+    const inc = applyIncome(s, def.reward.gold);
+    s = { ...s, gold: inc.gold, totalGoldEarned: inc.totalGoldEarned, runGoldEarned: inc.runGoldEarned };
+  }
+  const rewardStr = def.reward.rep ? `+${def.reward.rep} REP` : `+${def.reward.gold} CR`;
+  s = {
+    ...s,
+    log:                 addLog(s.log, `:: ACHIEVEMENT UNLOCKED :: ${id} :: ${rewardStr}`),
+    achievementFeedback: { id, ts: Date.now() },
+  };
+  return s;
 }
 
 // Applies combo + critical multipliers to a raw item
@@ -361,7 +443,8 @@ export function siphon(state) {
   const distMult    = DISTRICTS[state.district]?.lootMult ?? 1;
   const heatMult    = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
   const heatPenalty = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
-  const successRate = Math.min(0.95, 0.70 + (state.level - 1) * 0.03 + (state.upgrades.ghostProtocol ?? 0) * 0.02 - heatPenalty);
+  const bountyPen   = (state.bountyActive ?? false) ? 0.20 : 0;
+  const successRate = Math.min(0.95, Math.max(0.05, 0.70 + (state.level - 1) * 0.03 + (state.upgrades.ghostProtocol ?? 0) * 0.02 - heatPenalty - bountyPen));
   const newStamina  = state.stamina - 10;
   const heatFail    = Math.round(10 * heatMult);
   const heatOk      = Math.round(5  * heatMult);
@@ -393,21 +476,28 @@ export function siphon(state) {
 
   let next = checkLevelUp({
     ...state,
-    stamina:        newStamina,
-    heat:           Math.min(100, state.heat + heatOk),
-    xp:             state.xp + loot.xp,
-    reputation:     state.reputation + 1,
-    comboCount:     newCombo,
-    heatSpikeTimer: isHighValue ? 10 : (state.heatSpikeTimer ?? 0),
-    inventory:      [...state.inventory, item],
-    feedback:       { type: 'SUCCESS', gold: item.gold, item: loot.id, critical: isCritical, ts: Date.now() },
-    log:            nextLog,
+    stamina:           newStamina,
+    heat:              Math.min(100, state.heat + heatOk),
+    xp:                state.xp + loot.xp,
+    reputation:        state.reputation + 1,
+    comboCount:        newCombo,
+    heatSpikeTimer:    isHighValue ? 10 : (state.heatSpikeTimer ?? 0),
+    siphonsWithoutBust: (state.siphonsWithoutBust ?? 0) + 1,
+    inventory:         [...state.inventory, item],
+    feedback:          { type: 'SUCCESS', gold: item.gold, item: loot.id, critical: isCritical, ts: Date.now() },
+    log:               nextLog,
   });
   next = applyBustedCheck(next);
   next = addZero(next, 'first_siphon');
   if (next.gold >= 10000) next = addZero(next, 'gold_10k');
   next = updateDailyChallenge(next, 'SIPHON_COUNT', 1);
   next = updateDailyChallenge(next, 'COMBO_REACH', newCombo);
+  next = tryDropEncKey(next);
+  // achievements
+  if ((next.siphonsWithoutBust ?? 0) >= 50) next = checkAchievement(next, 'GHOST');
+  if (isCritical)  next = checkAchievement(next, 'FIRST_BLOOD');
+  if (newCombo >= 15) next = checkAchievement(next, 'COMBO_KING');
+  if (next.inventory.length >= getMaxInventory(next.upgrades)) next = checkAchievement(next, 'DATA_HOARDER');
   return next;
 }
 
@@ -426,7 +516,8 @@ export function breach(state) {
   const distMult    = DISTRICTS[state.district]?.lootMult ?? 1;
   const heatMult    = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
   const heatPenalty = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
-  const successRate = Math.min(0.95, 0.55 + (state.level - 1) * 0.04 - heatPenalty);
+  const bountyPen   = (state.bountyActive ?? false) ? 0.20 : 0;
+  const successRate = Math.min(0.95, Math.max(0.05, 0.55 + (state.level - 1) * 0.04 - heatPenalty - bountyPen));
   const newStamina  = state.stamina - 25;
   const heatFail    = Math.round(20 * heatMult);
   const heatOk      = Math.round(15 * heatMult);
@@ -472,6 +563,10 @@ export function breach(state) {
   if (next.gold >= 10000) next = addZero(next, 'gold_10k');
   next = updateDailyChallenge(next, 'BREACH_COUNT', 1);
   next = updateDailyChallenge(next, 'COMBO_REACH', newCombo);
+  next = tryDropEncKey(next);
+  if (isCritical)  next = checkAchievement(next, 'FIRST_BLOOD');
+  if (newCombo >= 15) next = checkAchievement(next, 'COMBO_KING');
+  if (next.inventory.length >= getMaxInventory(next.upgrades)) next = checkAchievement(next, 'DATA_HOARDER');
   return next;
 }
 
@@ -490,7 +585,8 @@ export function deepSiphon(state) {
   const distMult    = DISTRICTS[state.district]?.lootMult ?? 1;
   const heatMult    = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
   const heatPenalty = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
-  const successRate = Math.min(0.95, 0.65 + (state.level - 1) * 0.03 - heatPenalty);
+  const bountyPen   = (state.bountyActive ?? false) ? 0.20 : 0;
+  const successRate = Math.min(0.95, Math.max(0.05, 0.65 + (state.level - 1) * 0.03 - heatPenalty - bountyPen));
   const newStamina  = state.stamina - 15;
   const heatFail    = Math.round(12 * heatMult);
   const heatOk      = Math.round(8  * heatMult);
@@ -534,6 +630,10 @@ export function deepSiphon(state) {
   next = applyBustedCheck(next);
   next = updateDailyChallenge(next, 'COMBO_REACH', newCombo);
   if (next.gold >= 10000) next = addZero(next, 'gold_10k');
+  next = tryDropEncKey(next);
+  if (isCritical)  next = checkAchievement(next, 'FIRST_BLOOD');
+  if (newCombo >= 15) next = checkAchievement(next, 'COMBO_KING');
+  if (next.inventory.length >= getMaxInventory(next.upgrades)) next = checkAchievement(next, 'DATA_HOARDER');
   return next;
 }
 
@@ -552,7 +652,8 @@ export function mainframeHack(state) {
   const distMult    = DISTRICTS[state.district]?.lootMult ?? 1;
   const heatMult    = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
   const heatPenalty = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
-  const successRate = Math.min(0.95, 0.35 + (state.level - 1) * 0.03 - heatPenalty);
+  const bountyPen   = (state.bountyActive ?? false) ? 0.20 : 0;
+  const successRate = Math.min(0.95, Math.max(0.05, 0.35 + (state.level - 1) * 0.03 - heatPenalty - bountyPen));
   const newStamina  = state.stamina - 40;
   const heatFail    = Math.round(35 * heatMult);
   const heatOk      = Math.round(25 * heatMult);
@@ -597,6 +698,10 @@ export function mainframeHack(state) {
   next = applyBustedCheck(next);
   if (next.gold >= 10000) next = addZero(next, 'gold_10k');
   next = updateDailyChallenge(next, 'COMBO_REACH', newCombo);
+  next = tryDropEncKey(next);
+  if (isCritical)  next = checkAchievement(next, 'FIRST_BLOOD');
+  if (newCombo >= 15) next = checkAchievement(next, 'COMBO_KING');
+  if (next.inventory.length >= getMaxInventory(next.upgrades)) next = checkAchievement(next, 'DATA_HOARDER');
   return next;
 }
 
@@ -745,14 +850,28 @@ export function hireRunner(state, runnerType) {
   if ((state.prestige ?? 0) < cfg.requiresPrestige) return state;
   const count = state.runners[runnerType] ?? 0;
   if (count >= 5) return state;
-  const cost = getRunnerCost(cfg.baseCost, count);
+
+  const perksUsed = state.prestigePerksUsed ?? [];
+  let cost      = getRunnerCost(cfg.baseCost, count);
+  let perkId    = null;
+  let perkLabel = null;
+
+  if (runnerType === 'streetRunner' && count === 0 && (state.prestige ?? 0) >= 1 && !perksUsed.includes('FREE_STREET_RUNNER')) {
+    cost = 0; perkId = 'FREE_STREET_RUNNER'; perkLabel = 'STREET_RUNNER';
+  } else if (runnerType === 'dataThief' && count === 0 && (state.prestige ?? 0) >= 2 && !perksUsed.includes('FREE_DATA_THIEF')) {
+    cost = 0; perkId = 'FREE_DATA_THIEF'; perkLabel = 'DATA_THIEF';
+  }
+
   if (state.gold < cost) return state;
+
   let next = {
     ...state,
-    gold:    state.gold - cost,
-    runners: { ...state.runners, [runnerType]: count + 1 },
+    gold:              state.gold - cost,
+    runners:           { ...state.runners, [runnerType]: count + 1 },
+    prestigePerksUsed: perkId ? [...perksUsed, perkId] : perksUsed,
     log: addLog(state.log, `:: ${cfg.label} HIRED (${count + 1}/5) :: -${cost.toLocaleString()} CR`),
   };
+  if (perkId) next = { ...next, log: addLog(next.log, `:: PRESTIGE PERK :: First ${perkLabel} recruited free`) };
   const totalRunners = Object.values(next.runners).reduce((s, n) => s + n, 0);
   if (totalRunners === 1) next = addZero(next, 'first_runner');
   return next;
@@ -786,7 +905,7 @@ export function prestige(state) {
     upgrades: {
       ghostProtocol: 0, neuralBoost: 0, signalDampener: 0,
       stimPack: 0, traceEraser: 0, iceBreaker: 0, darkChannel: 0,
-      voidDrive: 0, proxyServers: 0, quantumEncryption: 0, autoFencer: 0, aiSubroutine: 0,
+      voidDrive: 0, proxyServers: 0, quantumEncryption: 0, autoFencer: 0, aiSubroutine: 0, hwOverclock: 0,
     },
     runners:            { streetRunner: 0, dataThief: 0, infiltrator: 0, fixer: 0, shadowBroker: state.runners?.shadowBroker ?? 0 },
     runnerTick:         { streetRunner: 0, dataThief: 0, infiltrator: 0, fixer: 0, shadowBroker: 0 },
@@ -805,12 +924,18 @@ export function prestige(state) {
     raidActive:         false,
     raidTimer:          0,
     nextRaidIn:         randomRaidInterval(),
+    bountyActive:       false,
     feedback:           null,
     dailyFeedback:      null,
     lastTickTime:       Date.now(),
-    runGoldEarned:      0,
-    district:           'neon_strip',
+    runGoldEarned:       0,
+    district:            'neon_strip',
+    siphonsWithoutBust:  0,
+    everBustedThisRun:   false,
+    achievementFeedback: null,
+    prestigePerksUsed:   [],
     // Keep
+    encKeys:            state.encKeys ?? [],
     prestige:           newPrestige,
     prestigeMultiplier: mult,
     reputation:         state.reputation,
@@ -818,6 +943,7 @@ export function prestige(state) {
     offlineAccrualCap:  state.offlineAccrualCap,
     intelUpgrades:      state.intelUpgrades ?? {},
     zeroMessages:       state.zeroMessages ?? [],
+    achievements:       state.achievements ?? {},
     log: addLog([], `>> PRESTIGE ACTIVATED :: RUN #${newPrestige} INITIATED :: MULTIPLIER x${mult.toFixed(2)}`),
   };
   next = addZero(next, 'first_prestige');
@@ -846,7 +972,8 @@ export function calculateOfflineProgress(state, nowMs) {
   const corpMoleMult = (state.intelUpgrades?.corpMole ?? 0) >= 1 ? 2 : 1;
   const heatAfter    = Math.max(0, parseFloat((state.heat - (distDecay + traceBonus) * corpMoleMult * elapsed).toFixed(2)));
 
-  return { elapsed, earnedGold, heatAfter };
+  const heatDecayed = Math.round(Math.max(0, state.heat - heatAfter));
+  return { elapsed, earnedGold, heatAfter, heatDecayed };
 }
 
 // ── WARP TIME (DEV) ───────────────────────────────────────────────────────────
@@ -933,6 +1060,16 @@ export function tick(state) {
   // ── SURVIVE_HEAT daily challenge ──────────────────────────────────────────
   if (s.heat >= 80) s = updateDailyChallenge(s, 'SURVIVE_HEAT', s.heat);
 
+  // ── Bounty system ─────────────────────────────────────────────────────────
+  if (!(s.bountyActive ?? false) && s.heat >= 80) {
+    s = { ...s, bountyActive: true,
+          log: addLog(s.log, ':: BOUNTY ISSUED :: Aether-Biotech has flagged your signature') };
+    s = addZero(s, 'bounty');
+  } else if ((s.bountyActive ?? false) && s.heat < 40) {
+    s = { ...s, bountyActive: false,
+          log: addLog(s.log, ':: BOUNTY CLEARED :: signature lost') };
+  }
+
   // Item cooldowns: 2x faster during lay_low
   const cdTick = s.layLowActive ? 2 : 1;
   s = {
@@ -965,11 +1102,17 @@ export function tick(state) {
     return next;
   }
 
-  s = runnerTick(s, 'streetRunner', 2,   RUNNER_SR_CYCLE, 1);
-  s = runnerTick(s, 'dataThief',    8,   RUNNER_DT_CYCLE, 2);
-  s = runnerTick(s, 'infiltrator',  35,  RUNNER_IF_CYCLE, 3);
-  s = runnerTick(s, 'fixer',        150, RUNNER_FX_CYCLE, 1);
-  s = runnerTick(s, 'shadowBroker', 600, RUNNER_SB_CYCLE, 0);
+  // HW_OVERCLOCK: each level cuts cycle by 15%, adds 50% heat per runner per cycle
+  const hwLvl       = s.upgrades.hwOverclock ?? 0;
+  const hwSpeedMult = Math.pow(0.85, hwLvl);   // e.g. lvl1 → 0.85x cycle time
+  const hwHeatMult  = 1 + hwLvl * 0.5;          // e.g. lvl1 → 1.5x heat
+  function adjCycle(base) { return Math.max(1, Math.round(base * hwSpeedMult)); }
+
+  s = runnerTick(s, 'streetRunner', 2,   adjCycle(RUNNER_SR_CYCLE), 1   * hwHeatMult);
+  s = runnerTick(s, 'dataThief',    8,   adjCycle(RUNNER_DT_CYCLE), 2   * hwHeatMult);
+  s = runnerTick(s, 'infiltrator',  35,  adjCycle(RUNNER_IF_CYCLE), 3   * hwHeatMult);
+  s = runnerTick(s, 'fixer',        150, adjCycle(RUNNER_FX_CYCLE), 1   * hwHeatMult);
+  s = runnerTick(s, 'shadowBroker', 600, adjCycle(RUNNER_SB_CYCLE), 0);
 
   if (s.upgrades.autoFencer >= 1) {
     const newAutoTick = (s.autoFencerTick ?? 0) + 1;
@@ -1018,7 +1161,7 @@ export function tick(state) {
       if (cdWasActive) raidLog = addLog(raidLog, ':: RAID ALERT :: LAY_LOW cooldown cleared');
       s = {
         ...s, raidActive: true, raidTimer: RAID_DURATION, nextRaidIn: randomRaidInterval(),
-        layLowCooldown: 0,
+        layLowCooldown: 0, layLowActive: false, layLowTimer: 0,
         log: raidLog,
       };
     } else {

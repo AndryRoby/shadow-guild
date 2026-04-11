@@ -5,10 +5,10 @@ import {
   Activity, ChevronUp, Users, ShieldOff, Star,
 } from 'lucide-react';
 import {
-  siphon, breach, deepSiphon, mainframeHack, layLow, sellCooledItems, darkMarket, barter, manualCool,
+  siphon, breach, deepSiphon, mainframeHack, layLow, sellCooledItems, darkMarket, barter, manualCool, decrypt,
   buyUpgrade, buyIntelUpgrade, hireRunner, setDistrict, warpTime, prestige, tick,
   xpRequired, heatStatus, effectiveSuccessRate, calculateOfflineProgress,
-  UPGRADE_DEFS, INTEL_UPGRADE_DEFS, DISTRICTS, CHALLENGE_DEFS, getUpgradeCost, getRunnerCost,
+  UPGRADE_DEFS, INTEL_UPGRADE_DEFS, DISTRICTS, CHALLENGE_DEFS, ACHIEVEMENT_DEFS, getUpgradeCost, getRunnerCost,
   DEV_MODE, SAVE_KEY, exportSave, importSave,
 } from './gameLogic.js';
 
@@ -44,7 +44,7 @@ const FRESH_STATE = {
   upgrades: {
     ghostProtocol: 0, neuralBoost: 0, signalDampener: 0,
     stimPack: 0, traceEraser: 0, iceBreaker: 0, darkChannel: 0,
-    voidDrive: 0, proxyServers: 0, quantumEncryption: 0, autoFencer: 0, aiSubroutine: 0,
+    voidDrive: 0, proxyServers: 0, quantumEncryption: 0, autoFencer: 0, aiSubroutine: 0, hwOverclock: 0,
   },
   intelUpgrades:      { netScanner: 0, corpMole: 0, deepSource: 0, darkExchange: 0 },
   runners:            { streetRunner: 0, dataThief: 0, infiltrator: 0, fixer: 0, shadowBroker: 0 },
@@ -60,6 +60,13 @@ const FRESH_STATE = {
   raidTimer:          0,
   nextRaidIn:         DEV_MODE ? 60 : 600,
   aiSubroutineTick:   0,
+  encKeys:             [],
+  bountyActive:        false,
+  achievements:        {},
+  siphonsWithoutBust:  0,
+  everBustedThisRun:   false,
+  achievementFeedback: null,
+  prestigePerksUsed:   [],
 };
 
 const DEV_START = { ...FRESH_STATE, gold: 50000, reputation: 50, level: 5, runGoldEarned: 50000, totalGoldEarned: 50000 };
@@ -99,6 +106,7 @@ function reducer(state, action) {
     case 'DARK_MARKET':       return darkMarket(state);
     case 'BARTER':            return barter(state);
     case 'MANUAL_COOL':       return manualCool(state);
+    case 'DECRYPT':           return decrypt(state);
     case 'BUY_UPGRADE':       return buyUpgrade(state, action.key);
     case 'HIRE_RUNNER':       return hireRunner(state, action.runnerType);
     case 'SET_DISTRICT':      return setDistrict(state, action.district);
@@ -211,8 +219,8 @@ function ProtoBtn({ onClick, disabled, active, children }) {
         ...(active  ? { background: 'var(--amber)', color: 'var(--bg)' } : {}),
         ...(disabled && !active ? { opacity: 0.35, cursor: 'not-allowed', borderColor: 'var(--muted)' } : {}),
       }}
-      onMouseEnter={e => { if (interactive) { e.currentTarget.style.background = 'var(--amber)'; e.currentTarget.style.color = 'var(--bg)'; } }}
-      onMouseLeave={e => { if (interactive) { e.currentTarget.style.background = 'var(--surface-high)'; e.currentTarget.style.color = 'var(--amber)'; } }}
+      onMouseEnter={e => { if (interactive) { e.currentTarget.style.background = 'var(--amber)'; e.currentTarget.style.color = 'var(--bg)'; e.currentTarget.style.boxShadow = '0 0 14px rgba(255,193,116,0.45)'; } }}
+      onMouseLeave={e => { if (interactive) { e.currentTarget.style.background = 'var(--surface-high)'; e.currentTarget.style.color = 'var(--amber)'; e.currentTarget.style.boxShadow = 'none'; } }}
     >
       {children}
     </button>
@@ -318,34 +326,50 @@ function OfflinePopup({ report, onDismiss }) {
   return createPortal(
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9990,
-      background: 'rgba(0,0,0,0.75)',
+      background: 'rgba(0,0,0,0.92)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       <div style={{
         background: 'var(--surface-low)',
         border: '1px solid var(--amber)',
-        padding: '24px 28px',
-        minWidth: 280,
+        padding: '28px 32px',
+        minWidth: 320, maxWidth: 420,
         fontFamily: '"JetBrains Mono", monospace',
       }}>
-        <div style={{ fontSize: 11, color: 'var(--muted)', letterSpacing: '0.1rem', marginBottom: 12 }}>
-          :: OFFLINE_REPORT
+        <div style={{ fontSize: 10, color: 'var(--muted)', letterSpacing: '0.14rem', marginBottom: 16 }}>
+          :: SHADOW_GUILD — RECONNECTING
         </div>
-        <div style={{ fontSize: 13, marginBottom: 6 }}>
-          AWAY FOR <span style={{ color: 'var(--amber)', fontWeight: 700 }}>{fmtElapsed(report.elapsed)}</span>
+        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--amber)', letterSpacing: '0.08rem', marginBottom: 18 }}>
+          WELCOME BACK, OPERATIVE
         </div>
-        {report.earnedGold > 0 ? (
-          <div style={{ fontSize: 13, marginBottom: 16 }}>
-            RUNNERS EARNED{' '}
-            <span style={{ color: '#22c55e', fontWeight: 700 }}>+{report.earnedGold.toLocaleString()} CR</span>
-            <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 6 }}>(60% efficiency)</span>
-          </div>
-        ) : (
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>No runners active.</div>
-        )}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 12 }}>
+          <span style={{ color: 'var(--muted)' }}>TIME OFFLINE</span>
+          <span style={{ color: 'var(--amber)', fontWeight: 700 }}>{fmtElapsed(report.elapsed)}</span>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 12 }}>
+          <span style={{ color: 'var(--muted)' }}>RUNNERS EARNED</span>
+          <span style={{ color: report.earnedGold > 0 ? '#22c55e' : 'var(--muted)', fontWeight: 700 }}>
+            {report.earnedGold > 0 ? `+${report.earnedGold.toLocaleString()} CR` : 'NONE'}
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18, fontSize: 12 }}>
+          <span style={{ color: 'var(--muted)' }}>HEAT DECAYED</span>
+          <span style={{ color: (report.heatDecayed ?? 0) > 0 ? '#22c55e' : 'var(--muted)', fontWeight: 700 }}>
+            {(report.heatDecayed ?? 0) > 0 ? `-${report.heatDecayed}%` : '—'}
+          </span>
+        </div>
+
+        <div style={{ fontSize: 10, color: 'var(--muted)', fontStyle: 'italic', marginBottom: 18, borderTop: '1px solid var(--surface-high)', paddingTop: 12 }}>
+          [ZERO &gt;&gt;] The city didn't stop while you were gone.
+        </div>
+
         <button onClick={onDismiss} style={{
           ...S.settingsBtn, display: 'block', width: '100%',
-          background: 'var(--amber)', color: 'var(--bg)', fontWeight: 700, padding: '9px 0', textAlign: 'center',
+          background: 'var(--amber)', color: 'var(--bg)', fontWeight: 700, padding: '10px 0', textAlign: 'center',
+          letterSpacing: '0.1rem', fontSize: 11,
         }}>
           RESUME OPERATIONS
         </button>
@@ -379,6 +403,10 @@ export default function App() {
   const [goldPulseKey,  setGoldPulseKey]  = useState(0);
   const [repPulseKey,   setRepPulseKey]   = useState(0);
   const [glitchedEntry, setGlitchedEntry] = useState(null);
+  const [mobileTab,    setMobileTab]    = useState('OPS');
+  const [windowWidth,  setWindowWidth]  = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+  const [newestLogKey, setNewestLogKey] = useState(0);
+  const prevLogLen = useRef(0);
 
   const logRef = useRef(state.log);
   logRef.current = state.log;
@@ -433,6 +461,17 @@ export default function App() {
     setTimeout(() => setOverlays(prev => prev.filter(o => o.id !== id)), 2500);
   }, [state.dailyFeedback]);
 
+  // ── achievement overlay ────────────────────────────────────────────────────
+  const lastAchievementTs = useRef(null);
+  useEffect(() => {
+    if (!state.achievementFeedback) return;
+    if (state.achievementFeedback.ts === lastAchievementTs.current) return;
+    lastAchievementTs.current = state.achievementFeedback.ts;
+    const { id, ts } = state.achievementFeedback;
+    setOverlays(prev => [...prev, { id: ts, type: 'ACHIEVEMENT', achievementId: id }]);
+    setTimeout(() => setOverlays(prev => prev.filter(o => o.id !== ts)), 3500);
+  }, [state.achievementFeedback]);
+
   // ── gold pulse ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (state.gold > prevGold.current) setGoldPulseKey(k => k + 1);
@@ -444,6 +483,19 @@ export default function App() {
     if (state.reputation > prevRep.current) setRepPulseKey(k => k + 1);
     prevRep.current = state.reputation;
   }, [state.reputation]);
+
+  // ── window resize ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
+  // ── typewriter: track newest log entry ─────────────────────────────────────
+  useEffect(() => {
+    if (state.log.length > prevLogLen.current) setNewestLogKey(k => k + 1);
+    prevLogLen.current = state.log.length;
+  }, [state.log.length]);
 
   // ── heat glitch (>= 95): corrupt a random log entry briefly ───────────────
   useEffect(() => {
@@ -504,6 +556,8 @@ export default function App() {
   const comboHigh   = comboCount >= 10;
 
   const heatGlitchClass = heatRound >= 95 ? 'heat-extreme' : heatRound >= 80 ? 'heat-critical' : '';
+  const isMobile   = windowWidth < 768;
+  const heatFilter = heatRound >= 95 ? 'hue-rotate(8deg) saturate(1.8)' : 'none';
 
   // daily challenge
   const dc             = state.dailyChallenge;
@@ -514,6 +568,11 @@ export default function App() {
   const dataChipCount  = state.inventory.filter(i => i.id === 'DATA_CHIP').length;
   const barterReady    = dataChipCount >= 10 && (state.barterCooldown ?? 0) === 0;
   const barterDisabled = (state.barterCooldown ?? 0) > 0 || dataChipCount < 10 || isBlocked;
+
+  // encryption keys
+  const ENC_KEY_IDS  = ['KEY_ALPHA', 'KEY_BETA', 'KEY_GAMMA', 'KEY_DELTA', 'KEY_EPSILON'];
+  const encKeys      = state.encKeys ?? [];
+  const canDecrypt   = ENC_KEY_IDS.every(k => encKeys.includes(k));
 
   // AI subroutine countdown
   const aiCycleSecs    = DEV_MODE ? 30 : 3600;
@@ -540,7 +599,23 @@ export default function App() {
 
   // ── render ─────────────────────────────────────────────────────────────────
   return (
-    <div style={S.root} className={heatGlitchClass}>
+    <div style={{ ...S.root, filter: heatFilter }} className={heatGlitchClass}>
+
+      {/* ── SCANLINE OVERLAY ── */}
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1001,
+        backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.025) 2px, rgba(0,0,0,0.025) 4px)',
+        pointerEvents: 'none',
+      }} />
+
+      {/* ── HEAT TINT (heat > 80) ── */}
+      {heatRound > 80 && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 2,
+          background: `rgba(239,68,68,${Math.min(0.12, (heatRound - 80) * 0.006)})`,
+          pointerEvents: 'none', transition: 'background 0.5s',
+        }} />
+      )}
 
       {/* ── BUSTED FLASH — rendered via portal, no parent clipping ── */}
       {bustedFlash && createPortal(
@@ -600,18 +675,20 @@ export default function App() {
               animation: `floatUp ${o.critical ? '2s' : '1.5s'} ease forwards`,
               fontFamily: '"JetBrains Mono", monospace',
               fontWeight: 700,
-              fontSize: o.type === 'BUSTED' ? 0 : o.critical ? 20 : o.type === 'DAILY_COMPLETE' ? 13 : 14,
+              fontSize: o.type === 'BUSTED' ? 0 : o.critical ? 20 : o.type === 'DAILY_COMPLETE' ? 13 : o.type === 'ACHIEVEMENT' ? 12 : 14,
               letterSpacing: '0.06rem', whiteSpace: 'nowrap',
               color:
-                o.critical              ? '#ffe066' :
-                o.type === 'SUCCESS'    ? 'var(--amber)' :
-                o.type === 'UPGRADE'    ? '#22c55e' :
-                o.type === 'DAILY_COMPLETE' ? '#22c55e' : '#ef4444',
+                o.critical                  ? '#ffe066' :
+                o.type === 'SUCCESS'        ? 'var(--amber)' :
+                o.type === 'UPGRADE'        ? '#22c55e' :
+                o.type === 'DAILY_COMPLETE' ? '#22c55e' :
+                o.type === 'ACHIEVEMENT'    ? 'var(--amber)' : '#ef4444',
               textShadow:
-                o.critical              ? '0 0 20px #ffe066, 0 0 40px rgba(255,224,102,0.6)' :
-                o.type === 'SUCCESS'    ? '0 0 14px rgba(255,193,116,0.9)' :
-                o.type === 'UPGRADE'    ? '0 0 14px rgba(34,197,94,0.9)' :
+                o.critical                  ? '0 0 20px #ffe066, 0 0 40px rgba(255,224,102,0.6)' :
+                o.type === 'SUCCESS'        ? '0 0 14px rgba(255,193,116,0.9)' :
+                o.type === 'UPGRADE'        ? '0 0 14px rgba(34,197,94,0.9)' :
                 o.type === 'DAILY_COMPLETE' ? '0 0 14px rgba(34,197,94,0.9)' :
+                o.type === 'ACHIEVEMENT'    ? '0 0 16px rgba(255,193,116,0.8)' :
                 '0 0 14px rgba(239,68,68,0.9)',
             }}>
               {o.type === 'SUCCESS'
@@ -620,6 +697,7 @@ export default function App() {
                   : `+${o.gold} CR  ${o.item}`
                 : o.type === 'UPGRADE'       ? `+1 ${o.label}`
                 : o.type === 'DAILY_COMPLETE' ? '[DAILY COMPLETE]'
+                : o.type === 'ACHIEVEMENT'   ? `[ACHIEVEMENT :: ${o.achievementId}]`
                 : '>> TRACED'}
             </div>
           ))}
@@ -652,15 +730,48 @@ export default function App() {
         </div>
       </div>
 
+      {/* ── MOBILE TAB BAR ── */}
+      {isMobile && (
+        <div style={{ display: 'flex', background: 'var(--surface-low)', borderBottom: '2px solid var(--surface-high)', position: 'sticky', top: 44, zIndex: 10 }}>
+          {['DASH', 'OPS', 'UPGRADES'].map(t => (
+            <button key={t} onClick={() => setMobileTab(t)} style={{
+              flex: 1, padding: '9px 0',
+              background: mobileTab === t ? 'var(--amber)' : 'transparent',
+              color: mobileTab === t ? 'var(--bg)' : 'var(--muted)',
+              border: 'none', fontFamily: '"JetBrains Mono", monospace',
+              fontSize: 10, letterSpacing: '0.12rem', cursor: 'pointer',
+              fontWeight: mobileTab === t ? 700 : 400,
+            }}>{t}</button>
+          ))}
+        </div>
+      )}
+
       {/* ── SHAKE WRAPPER ── */}
       <div style={{ animation: shaking ? 'shake 0.45s ease' : 'none' }}
            onAnimationEnd={() => setShaking(false)}>
 
-        {/* ── GRID ── */}
-        <div style={S.grid}>
+        {/* ── CONSOLE GRID ── */}
+        <div style={isMobile ? { display: 'flex', flexDirection: 'column', gap: 2, padding: 2 } : S.consoleGrid}>
 
-          {/* ── STATUS PANEL ── */}
-          <div style={S.panel}>
+          {/* ── LEFT COL: STATUS ── */}
+          {(!isMobile || mobileTab === 'DASH') && (
+          <div style={S.colLeft}>
+            {/* Operative portrait */}
+            <div style={{
+              position: 'relative', width: '100%', height: 96,
+              background: 'var(--surface-high)', border: '1px solid var(--amber)',
+              marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+            }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 8, color: 'var(--muted)', letterSpacing: '0.14rem', marginBottom: 2 }}>[ OPERATIVE ]</div>
+                <div style={{ fontSize: 20, color: 'var(--amber)', fontWeight: 700, letterSpacing: '0.05rem', lineHeight: 1 }}>01</div>
+                <div style={{ fontSize: 8, color: 'var(--muted)', letterSpacing: '0.1rem', marginTop: 3 }}>SHADOW_GUILD</div>
+              </div>
+              <div style={{ position: 'absolute', top: 0, left: 0, width: 10, height: 10, borderTop: '2px solid var(--amber)', borderLeft: '2px solid var(--amber)' }} />
+              <div style={{ position: 'absolute', top: 0, right: 0, width: 10, height: 10, borderTop: '2px solid var(--amber)', borderRight: '2px solid var(--amber)' }} />
+              <div style={{ position: 'absolute', bottom: 0, left: 0, width: 10, height: 10, borderBottom: '2px solid var(--amber)', borderLeft: '2px solid var(--amber)' }} />
+              <div style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderBottom: '2px solid var(--amber)', borderRight: '2px solid var(--amber)' }} />
+            </div>
             <span style={S.panelLabel}>:: OPERATIVE_STATUS</span>
 
             {/* GOLD */}
@@ -714,6 +825,11 @@ export default function App() {
             </div>
             <Bar pct={heatRound} color={heatColor} />
 
+            {(state.bountyActive ?? false) && (
+              <div style={{ fontSize: 9, color: '#ef4444', marginTop: 3, letterSpacing: '0.07rem', fontWeight: 700 }}>
+                !! BOUNTY ACTIVE :: -20% SUCCESS
+              </div>
+            )}
             {(state.upgrades.aiSubroutine ?? 0) >= 1 && (
               <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 3, letterSpacing: '0.05rem' }}>
                 AI_CLEAN :: [{fmtDuration(aiRemaining)}]
@@ -791,9 +907,11 @@ export default function App() {
               </div>
             )}
           </div>
+          )}
 
-          {/* ── RIGHT: TABS ── */}
-          <div style={S.panel}>
+          {/* ── CENTER COL: TABS ── */}
+          {(!isMobile || mobileTab === 'OPS' || mobileTab === 'UPGRADES') && (
+          <div style={S.colCenter}>
             <div style={{ display: 'flex', gap: 2, marginBottom: 14 }}>
               <Tab label="OPS"      active={activeTab === 'OPERATIONS'} onClick={() => setActiveTab('OPERATIONS')} />
               <Tab label="UPGRADES" active={activeTab === 'UPGRADES'}   onClick={() => setActiveTab('UPGRADES')} />
@@ -1075,6 +1193,31 @@ export default function App() {
             {activeTab === 'SETTINGS' && (
               <div style={{ overflowY: 'auto', maxHeight: 520 }}>
 
+                {/* ACHIEVEMENTS */}
+                <span style={{ ...S.panelLabel, marginBottom: 8 }}>ACHIEVEMENTS</span>
+                {ACHIEVEMENT_DEFS.map(def => {
+                  const unlocked = !!((state.achievements ?? {})[def.id]);
+                  return (
+                    <div key={def.id} style={{
+                      ...S.card, marginBottom: 3,
+                      borderLeft: `2px solid ${unlocked ? '#22c55e' : 'var(--surface-high)'}`,
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: unlocked ? '#22c55e' : 'var(--amber)', letterSpacing: '0.07rem' }}>
+                          {def.id}
+                        </span>
+                        <span style={{ fontSize: 9, color: unlocked ? '#22c55e' : 'var(--muted)', letterSpacing: '0.08rem' }}>
+                          {unlocked ? '[UNLOCKED]' : '[LOCKED]'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 9, color: 'var(--muted)', marginBottom: 2 }}>{def.desc}</div>
+                      <div style={{ fontSize: 9, color: unlocked ? '#22c55e' : 'var(--muted)' }}>
+                        {def.reward.rep ? `+${def.reward.rep} REP` : `+${def.reward.gold} CR`}
+                      </div>
+                    </div>
+                  );
+                })}
+
                 {/* PRESTIGE */}
                 <span style={{ ...S.panelLabel, marginBottom: 8 }}>PRESTIGE</span>
                 <div style={S.card}>
@@ -1086,6 +1229,11 @@ export default function App() {
                     Unlock: Level 10 + 100,000 CR earned this run.
                     Resets: gold, level, upgrades, runners.
                     Keeps: REP, intel upgrades, prestige count.
+                  </div>
+                  <div style={{ fontSize: 10, padding: '3px 7px', marginBottom: 7, background: 'var(--surface-low)', borderLeft: '2px solid var(--amber)', letterSpacing: '0.05rem' }}>
+                    <span style={{ color: state.level >= 10 ? '#22c55e' : 'var(--amber)' }}>Level: {state.level}/10</span>
+                    {' · '}
+                    <span style={{ color: runGoldEarned >= 100000 ? '#22c55e' : 'var(--amber)' }}>Run earned: {runGoldEarned.toLocaleString()}/100,000</span>
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 3 }}>
                     This run:{' '}
@@ -1211,129 +1359,172 @@ export default function App() {
               </div>
             )}
           </div>
-        </div>
+          )}
 
-        {/* ── INVENTORY ── */}
-        <div style={S.section}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: state.inventory.length ? 12 : 0 }}>
-            <span style={{ ...S.panelLabel, display: 'inline', marginBottom: 0 }}>
-              <Icon component={Package} /> :: INVENTORY
-            </span>
-            <span style={{ fontSize: 12, color: invFull ? '#ef4444' : 'var(--muted)' }}>
-              {state.inventory.length}/{maxInventory}
-              {coldCount > 0 && <span style={{ color: '#22c55e', marginLeft: 8 }}>· {coldCount} COLD</span>}
-              {invFull && <span style={{ color: '#ef4444', marginLeft: 8 }}>[FULL]</span>}
-            </span>
-            {state.inventory.length > 0 && (
-              <button onClick={() => setInventorySort(m => {
-                const i = SORT_MODES.indexOf(m);
-                return SORT_MODES[(i + 1) % SORT_MODES.length];
-              })} style={{
-                marginLeft: 'auto', background: 'transparent',
-                border: '1px solid var(--muted)', color: 'var(--muted)',
-                fontFamily: '"JetBrains Mono", monospace', fontSize: 8,
-                letterSpacing: '0.08rem', padding: '2px 6px', cursor: 'pointer',
-              }}>
-                SORT: [{inventorySort}]
-              </button>
-            )}
-          </div>
-          {sortedInventory.map(item => {
-            const rarity = item.gold > 300 ? { label: 'LEGENDARY', color: '#ffd700', pulse: true }
-                         : item.gold > 100 ? { label: 'RARE',      color: '#b347ff', pulse: false }
-                         : item.gold > 20  ? { label: 'UNCOMMON',  color: '#00d4ff', pulse: false }
-                         :                   { label: 'COMMON',    color: 'var(--amber)', pulse: false };
-            return (
-            <div key={item.instanceId} style={S.itemRow}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Icon component={Cpu} size={10} color={item.isHot ? '#f97316' : '#22c55e'} />
-                <div>
-                  <span style={{
-                    letterSpacing: '0.04rem', fontSize: 12, color: rarity.color,
-                    animation: rarity.pulse ? 'goldPulse 2s ease infinite' : 'none',
-                  }}>{item.id}</span>
-                  <span style={{ marginLeft: 6, fontSize: 8, color: rarity.color, opacity: 0.7, letterSpacing: '0.06rem' }}>
-                    {rarity.label}
-                  </span>
-                </div>
+          {/* ── RIGHT COL: INVENTORY + LOGS ── */}
+          {(!isMobile || mobileTab === 'DASH') && (
+          <div style={S.colRight}>
+
+            {/* ── INVENTORY ── */}
+            <div style={{ background: 'var(--surface-low)', padding: 16, marginBottom: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: sortedInventory.length ? 10 : 0 }}>
+                <span style={{ ...S.panelLabel, display: 'inline', marginBottom: 0 }}>
+                  <Icon component={Package} /> :: INVENTORY
+                </span>
+                <span style={{ fontSize: 11, color: invFull ? '#ef4444' : 'var(--muted)' }}>
+                  {state.inventory.length}/{maxInventory}
+                  {coldCount > 0 && <span style={{ color: '#22c55e', marginLeft: 6 }}>· {coldCount} COLD</span>}
+                  {invFull && <span style={{ color: '#ef4444', marginLeft: 6 }}>[FULL]</span>}
+                </span>
+                {state.inventory.length > 0 && (
+                  <button onClick={() => setInventorySort(m => {
+                    const idx = SORT_MODES.indexOf(m);
+                    return SORT_MODES[(idx + 1) % SORT_MODES.length];
+                  })} style={{
+                    marginLeft: 'auto', background: 'transparent',
+                    border: '1px solid var(--muted)', color: 'var(--muted)',
+                    fontFamily: '"JetBrains Mono", monospace', fontSize: 8,
+                    letterSpacing: '0.08rem', padding: '2px 6px', cursor: 'pointer',
+                  }}>
+                    SORT: [{inventorySort}]
+                  </button>
+                )}
               </div>
-              <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-                <span style={{ ...S.muted, fontSize: 11 }}>{item.gold} CR</span>
-                <span style={{ fontSize: 10, letterSpacing: '0.08rem', fontWeight: 700, minWidth: 52, textAlign: 'right', color: item.isHot ? '#f97316' : '#22c55e' }}>
-                  {item.isHot ? fmtCooldown(item.cooldownRemaining) : '[COLD]'}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
+                {sortedInventory.map(item => {
+                  const rarity = item.gold > 300 ? { label: 'LEGENDARY', color: '#ffd700', pulse: true }
+                               : item.gold > 100 ? { label: 'RARE',      color: '#b347ff', pulse: false }
+                               : item.gold > 20  ? { label: 'UNCOMMON',  color: '#00d4ff', pulse: false }
+                               :                   { label: 'COMMON',    color: 'var(--amber)', pulse: false };
+                  const coolPct = item.isHot && item.cooldown
+                    ? Math.max(0, Math.min(100, (1 - item.cooldownRemaining / item.cooldown) * 100))
+                    : 100;
+                  return (
+                  <div key={item.instanceId} style={{ background: 'var(--surface-high)', padding: '8px 10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 3 }}>
+                      <span style={{
+                        fontSize: 9, color: rarity.color, letterSpacing: '0.04rem', lineHeight: 1.3,
+                        animation: rarity.pulse ? 'goldPulse 2s ease infinite' : 'none',
+                      }}>{item.id}</span>
+                      <Icon component={Cpu} size={9} color={item.isHot ? '#f97316' : '#22c55e'} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: item.isHot ? 5 : 0 }}>
+                      <span style={{ fontSize: 9, color: 'var(--muted)' }}>{item.gold} CR</span>
+                      <span style={{ fontSize: 9, color: item.isHot ? '#f97316' : '#22c55e', fontWeight: 700 }}>
+                        {item.isHot ? fmtCooldown(item.cooldownRemaining) : 'COLD'}
+                      </span>
+                    </div>
+                    {item.isHot && (
+                      <div style={{ width: '100%', height: 2, background: 'var(--bg)' }}>
+                        <div style={{ height: '100%', width: `${coolPct}%`, background: '#f97316', transition: 'width 1s linear' }} />
+                      </div>
+                    )}
+                  </div>
+                  );
+                })}
+              </div>
+              {state.inventory.length === 0 && (
+                <span style={{ color: 'rgba(255,193,116,0.2)', fontSize: 11 }}>... INVENTORY EMPTY ...</span>
+              )}
+
+              {/* ── ENCRYPTION KEYS ── */}
+              {encKeys.length > 0 && (
+                <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--surface-high)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: 10, color: '#ffd700', letterSpacing: '0.1rem', fontWeight: 700 }}>
+                      ENCRYPTION KEYS [{encKeys.length}/5]
+                    </span>
+                    {canDecrypt && (
+                      <button onClick={() => dispatch({ type: 'DECRYPT' })} style={{
+                        background: '#ffd700', color: '#111', border: 'none',
+                        fontFamily: '"JetBrains Mono", monospace', fontSize: 9,
+                        letterSpacing: '0.08rem', fontWeight: 700, padding: '3px 8px', cursor: 'pointer',
+                      }}>
+                        DECRYPT
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {ENC_KEY_IDS.map(kid => {
+                      const owned = encKeys.includes(kid);
+                      return (
+                        <span key={kid} style={{
+                          fontSize: 8, letterSpacing: '0.06rem', padding: '2px 5px',
+                          border: `1px solid ${owned ? '#ffd700' : 'var(--muted)'}`,
+                          color: owned ? '#ffd700' : 'var(--muted)',
+                          background: owned ? 'rgba(255,215,0,0.08)' : 'transparent',
+                          animation: owned && canDecrypt ? 'goldPulse 1.5s ease infinite' : 'none',
+                        }}>
+                          {kid.replace('KEY_', '')} {owned ? '✓' : '·'}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── SYSTEM LOGS ── */}
+            <div style={{ background: 'var(--surface-low)', padding: 16 }}>
+              <div style={S.logsHeader}>
+                <span style={S.panelLabel}>:: SYSTEM_LOGS</span>
+                <span style={{ color: state.bustedLockout > 0 ? '#ef4444' : '#22c55e', fontSize: 11, letterSpacing: '0.1rem' }}>
+                  {state.bustedLockout > 0 ? `LOCKOUT: ${state.bustedLockout}s` : 'CONNECTION: STABLE'}
                 </span>
               </div>
-            </div>
-            );
-          })}
-          {state.inventory.length === 0 && (
-            <span style={{ color: 'rgba(255,193,116,0.2)', fontSize: 11 }}>... INVENTORY EMPTY ...</span>
-          )}
-        </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {state.log.length === 0
+                  ? <span style={{ color: 'rgba(255,193,116,0.2)', fontSize: 11 }}>... AWAITING_PROTOCOL ...</span>
+                  : state.log.map((entry, i) => {
+                    const isZero   = entry.includes('[ZERO >>]');
+                    const isCrit   = entry.includes('CRITICAL EXTRACTION');
+                    const isGlitch = i === glitchedEntry;
+                    const glitched = isGlitch
+                      ? entry.replace(/[A-Z]/g, (c, ix) => ix % 7 === 0 ? '█' : c)
+                      : entry;
 
-        {/* ── SYSTEM LOGS ── */}
-        <div style={S.section}>
-          <div style={S.logsHeader}>
-            <span style={S.panelLabel}>:: SYSTEM_LOGS</span>
-            <span style={{ color: state.bustedLockout > 0 ? '#ef4444' : '#22c55e', fontSize: 11, letterSpacing: '0.1rem' }}>
-              {state.bustedLockout > 0 ? `LOCKOUT: ${state.bustedLockout}s` : 'CONNECTION: STABLE'}
-            </span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {state.log.length === 0
-              ? <span style={{ color: 'rgba(255,193,116,0.2)', fontSize: 11 }}>... AWAITING_PROTOCOL ...</span>
-              : state.log.map((entry, i) => {
-                const isZero    = entry.includes('[ZERO >>]');
-                const isCrit    = entry.includes('CRITICAL EXTRACTION');
-                const isGlitch  = i === glitchedEntry;
-                const glitched  = isGlitch
-                  ? entry.replace(/[A-Z]/g, (c, idx) => idx % 7 === 0 ? '█' : c)
-                  : entry;
+                    const color =
+                      isZero                                                   ? '#ffc174'      :
+                      isCrit                                                   ? '#ffe066'      :
+                      entry.includes('[BUSTED]')                               ? '#ef4444'      :
+                      entry.includes('PRESTIGE')                               ? '#f97316'      :
+                      entry.includes('LEVEL UP')                               ? 'var(--amber)' :
+                      entry.includes('SOLD')        || entry.includes('UPGRADE')  ||
+                      entry.includes('HIRED')       || entry.includes('AUTO_FENCER') ||
+                      entry.includes('INTEL')       || entry.includes('DEV:')   ? '#22c55e'      :
+                      entry.includes('OFFLINE')     || entry.includes('RESTORED') ? 'var(--amber)' :
+                      entry.includes('RESET')                                  ? '#ef4444'      :
+                      entry.includes('RUNNER')      || entry.includes('THIEF') ||
+                      entry.includes('INFILTRATOR') || entry.includes('FIXER') ||
+                      entry.includes('BROKER')                                 ? '#f97316'      :
+                      entry.includes('FAILED')      || entry.includes('ABORTED') ? '#f97316'      :
+                      'var(--muted)';
 
-                const color =
-                  isZero               ? '#ffc174'      :
-                  isCrit               ? '#ffe066'      :
-                  entry.includes('[BUSTED]')    ? '#ef4444'      :
-                  entry.includes('PRESTIGE')    ? '#f97316'      :
-                  entry.includes('LEVEL UP')    ? 'var(--amber)' :
-                  entry.includes('SOLD')        ? '#22c55e'      :
-                  entry.includes('UPGRADE')     ? '#22c55e'      :
-                  entry.includes('HIRED')       ? '#22c55e'      :
-                  entry.includes('AUTO_FENCER') ? '#22c55e'      :
-                  entry.includes('OFFLINE')     ? 'var(--amber)' :
-                  entry.includes('RESTORED')    ? 'var(--amber)' :
-                  entry.includes('RESET')       ? '#ef4444'      :
-                  entry.includes('RUNNER')      ? '#f97316'      :
-                  entry.includes('THIEF')       ? '#f97316'      :
-                  entry.includes('INFILTRATOR') ? '#f97316'      :
-                  entry.includes('FIXER')       ? '#f97316'      :
-                  entry.includes('BROKER')      ? '#f97316'      :
-                  entry.includes('INTEL')       ? '#22c55e'      :
-                  entry.includes('DEV:')        ? '#22c55e'      :
-                  entry.includes('FAILED') || entry.includes('ABORTED') ? '#f97316' :
-                  'var(--muted)';
-
-                if (isZero) {
-                  // split timestamp + [ZERO >>] prefix from message body
-                  const zeroIdx = glitched.indexOf('[ZERO >>]');
-                  const prefix  = glitched.slice(0, zeroIdx + '[ZERO >>]'.length);
-                  const body    = glitched.slice(zeroIdx + '[ZERO >>]'.length);
-                  return (
-                    <div key={i} style={{ ...S.logEntry }}>
-                      <span style={{ color: '#ffc174', fontWeight: 700 }}>{prefix}</span>
-                      <span style={{ color: 'rgba(255,193,116,0.7)' }}>{body}</span>
-                    </div>
-                  );
+                    if (isZero) {
+                      const zeroIdx = glitched.indexOf('[ZERO >>]');
+                      const prefix  = glitched.slice(0, zeroIdx + '[ZERO >>]'.length);
+                      const body    = glitched.slice(zeroIdx + '[ZERO >>]'.length);
+                      return (
+                        <div key={i === 0 ? `n-${newestLogKey}` : i} style={{ ...S.logEntry, animation: i === 0 ? 'typeIn 0.3s ease' : 'none' }}>
+                          <span style={{ color: '#ffc174', fontWeight: 700 }}>{prefix}</span>
+                          <span style={{ color: 'rgba(255,193,116,0.7)' }}>{body}</span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={i === 0 ? `n-${newestLogKey}` : i} style={{ ...S.logEntry, color, animation: i === 0 ? 'typeIn 0.3s ease' : 'none' }}>
+                        {glitched}
+                      </div>
+                    );
+                  })
                 }
-                return (
-                  <div key={i} style={{ ...S.logEntry, color }}>
-                    {glitched}
-                  </div>
-                );
-              })
-            }
+              </div>
+            </div>
+
           </div>
-        </div>
+          )}
+
+        </div>{/* end console grid */}
 
       </div>{/* end shake wrapper */}
     </div>
@@ -1358,6 +1549,10 @@ const S = {
   headerTitle: { fontWeight: 700, letterSpacing: '0.15rem', fontSize: 13 },
   muted:       { color: 'var(--muted)', fontSize: 11, letterSpacing: '0.1rem' },
   grid:        { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, padding: 2 },
+  consoleGrid: { display: 'grid', gridTemplateColumns: '260px 1fr 300px', gap: 2, padding: 2, alignItems: 'start' },
+  colLeft:  { background: 'var(--surface-low)', padding: 16, minHeight: 'calc(100vh - 46px)', overflowY: 'auto' },
+  colCenter:{ background: 'var(--surface-low)', padding: 16, minHeight: 'calc(100vh - 46px)', overflowY: 'auto' },
+  colRight: { background: 'var(--surface-low)', padding: 0,  minHeight: 'calc(100vh - 46px)', overflowY: 'auto' },
   panel:       { background: 'var(--surface-low)', padding: 16 },
   panelLabel: {
     display: 'block', color: 'var(--muted)', fontSize: 11,
@@ -1374,7 +1569,7 @@ const S = {
     fontFamily: '"JetBrains Mono", monospace', fontSize: 12, letterSpacing: '0.1rem',
     textTransform: 'uppercase', textAlign: 'left', padding: '12px 14px',
     cursor: 'pointer', marginBottom: 7, borderRadius: 0,
-    transition: 'background 0.08s, color 0.08s',
+    transition: 'background 0.08s, color 0.08s, box-shadow 0.12s',
   },
   card:    { background: 'var(--surface-high)', padding: '10px 12px', marginBottom: 4 },
   section: { background: 'var(--surface-low)', margin: 2, padding: 16 },

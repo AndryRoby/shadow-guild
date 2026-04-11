@@ -110,3 +110,8 @@ body {
 .raid-blink {
   animation: raidBlink 0.8s ease infinite;
 }
+
+@keyframes typeIn {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
