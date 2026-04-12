@@ -25,7 +25,7 @@ const FRESH_STATE = {
   reputation:         0,
   heat:               0,
   stamina:            100,
-  level:              10,
+  level:              1,
   xp:                 0,
   prestige:           0,
   prestigeMultiplier: 1.0,
