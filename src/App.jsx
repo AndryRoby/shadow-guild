@@ -21,11 +21,11 @@ function calcMaxInventory(upgrades) {
 // ── INITIAL STATE ─────────────────────────────────────────────────────────────
 
 const FRESH_STATE = {
-  gold:               1000000,
+  gold:               0,
   reputation:         0,
   heat:               0,
   stamina:            100,
-  level:              10,
+  level:              0,
   xp:                 0,
   prestige:           0,
   prestigeMultiplier: 1.0,
@@ -757,50 +757,72 @@ export default function App() {
 
       {/* ── SYSTEM SCAN OVERLAY ── */}
       {scanActive && createPortal(
-        <>
-          <div className="scan-alert" style={{ position: 'fixed', inset: 0, zIndex: 9994, pointerEvents: 'none' }} />
-          <div style={{
-            position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9995,
-            background: 'rgba(26, 5, 5, 0.95)', borderBottom: '2px solid #ef4444',
-            padding: '12px 16px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 20,
-            pointerEvents: 'none', boxShadow: '0 4px 20px rgba(239,68,68,0.3)'
-          }}>
-            <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 14, color: '#fca5a5', letterSpacing: '0.12rem', fontWeight: 700 }}>
-              !! SYSTEM_SCAN IN PROGRESS
-            </span>
-            <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 18, color: '#ef4444', fontWeight: 700 }}>
-              {scanTimer}s
-            </span>
-          </div>
+				<>
+					{/* Full-screen red pulse - JEMNEJŠÍ EFEKT */}
+					<div className="scan-alert" style={{
+						position: 'fixed', inset: 0, zIndex: 9994, pointerEvents: 'none',
+						background: 'rgba(239,68,68,0.15)', // Len jemný nádych
+						animation: 'scanPulse 1.5s ease-in-out infinite'
+					}} />
+					
+					{/* Top warning banner - PEVNEJŠIE POZADIE */}
+					<div style={{
+						position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9995,
+						background: '#1a0505', borderBottom: '2px solid #ef4444',
+						padding: '12px 16px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 20,
+						pointerEvents: 'none', boxShadow: '0 4px 30px rgba(0,0,0,0.8)'
+					}}>
+						<span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 14, color: '#fca5a5', letterSpacing: '0.12rem', fontWeight: 700 }}>
+							!! SYSTEM_SCAN IN PROGRESS
+						</span>
+						<span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 18, color: '#ef4444', fontWeight: 700 }}>
+							{scanTimer}s
+						</span>
+					</div>
 
-          <div style={{
-            position: 'fixed', left: `${scanBtnPos.x}%`, top: `${scanBtnPos.y}%`,
-            transform: 'translate(-50%, -50%)', zIndex: 9996, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center'
-          }}>
-            <button
-              onClick={() => dispatch({ type: 'PURGE_LOGS' })}
-              style={{
-                background: '#0a0a0a', border: '2px solid #ef4444', color: '#ef4444', fontFamily: '"JetBrains Mono", monospace',
-                fontSize: 12, letterSpacing: '0.12rem', fontWeight: 700, padding: '12px 24px', cursor: 'pointer',
-                boxShadow: '0 0 16px rgba(239,68,68,0.8)', animation: 'raidBlink 0.9s ease infinite', width: '100%'
-              }}
-            >
-              PURGE_LOCAL_LOGS
-            </button>
-            <button
-              onClick={() => dispatch({ type: 'COUNTER_HACK' })}
-              style={{
-                background: 'rgba(168, 85, 247, 0.1)', border: '1px solid #a855f7', color: '#a855f7', fontFamily: '"JetBrains Mono", monospace',
-                fontSize: 10, letterSpacing: '0.08rem', fontWeight: 700, padding: '8px 16px', cursor: 'pointer',
-                boxShadow: '0 0 12px rgba(168, 85, 247, 0.3)', width: '100%'
-              }}
-            >
-              COUNTER-HACK [50 STA / 30% WIN]
-            </button>
-          </div>
-        </>,
-        document.body
-      )}
+					{/* Action Container - TERAZ AKO PEVNÝ MODUL */}
+					<div style={{
+						position: 'fixed',
+						left: `${scanBtnPos.x}%`, top: `${scanBtnPos.y}%`,
+						transform: 'translate(-50%, -50%)',
+						zIndex: 9996, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center',
+						background: '#0a0a0a', padding: '15px', border: '1px solid rgba(239,68,68,0.3)',
+						boxShadow: '0 0 50px rgba(0,0,0,0.9)' // Odreže to od pulzujúceho pozadia
+					}}>
+						<button
+							onClick={() => dispatch({ type: 'PURGE_LOGS' })}
+							style={{
+								background: '#000', border: '2px solid #ef4444',
+								color: '#ef4444', fontFamily: '"JetBrains Mono", monospace',
+								fontSize: 12, letterSpacing: '0.12rem', fontWeight: 900,
+								padding: '14px 28px', cursor: 'pointer',
+								boxShadow: '0 0 16px rgba(239,68,68,0.4)',
+								animation: 'raidBlink 0.9s ease infinite', width: '220px'
+							}}
+						>
+							PURGE_LOCAL_LOGS
+						</button>
+						
+						<button
+							onClick={() => dispatch({ type: 'COUNTER_HACK' })}
+							style={{
+								background: '#120520', border: '2px solid #a855f7',
+								color: '#d8b4fe', fontFamily: '"JetBrains Mono", monospace',
+								fontSize: 11, letterSpacing: '0.08rem', fontWeight: 900,
+								padding: '10px 20px', cursor: 'pointer',
+								boxShadow: '0 0 20px rgba(168, 85, 247, 0.4)', width: '220px'
+							}}
+						>
+							COUNTER-HACK [50 STA]
+						</button>
+
+						<div style={{ fontSize: 9, color: '#a855f7', marginTop: 4, opacity: 0.8 }}>
+							CHANCE: 30% | REWARD: 5000 CR + HEAT 0
+						</div>
+					</div>
+				</>,
+				document.body
+			)}
 
       {/* ── OFFLINE POPUP ── */}
       <OfflinePopup report={offlineReport} onDismiss={() => setOfflineReport(null)} />
