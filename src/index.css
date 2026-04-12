@@ -134,8 +134,8 @@ body {
 }
 
 @keyframes neonPulse {
-  0%,  100% { box-shadow: 0 0 4px currentColor, 0 0 8px currentColor; }
-  50%        { box-shadow: 0 0 12px currentColor, 0 0 24px currentColor, 0 0 36px currentColor; }
+	0%,  100% { box-shadow: 0 0 2px currentColor, 0 0 4px currentColor; }
+	50%        { box-shadow: 0 0 6px currentColor, 0 0 12px currentColor; }
 }
 
 .neon-active {

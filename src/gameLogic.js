@@ -18,9 +18,9 @@ const SCAN_DURATION     = DEV_MODE ? 10  : 15;
 // ── LOOT TABLES ──────────────────────────────────────────────────────────────
 
 export const STANDARD_LOOT = [
-  { id: 'DATA_CHIP',          gold: 5,   xp: 8,   weight: 40,  cooldown: 180  },
-  { id: 'CREDIT_CHIP',        gold: 12,  xp: 15,  weight: 28,  cooldown: 180  },
-  { id: 'ACCESS_CARD',        gold: 28,  xp: 25,  weight: 16,  cooldown: 300  },
+  { id: 'DATA_CHIP',          gold: 5,   xp: 8,   weight: 40,  cooldown: 45   }, // Bolo 180
+  { id: 'CREDIT_CHIP',        gold: 12,  xp: 15,  weight: 28,  cooldown: 90   }, // Bolo 180
+  { id: 'ACCESS_CARD',        gold: 28,  xp: 25,  weight: 16,  cooldown: 180  }, // Bolo 300
   { id: 'ENCRYPTED_DRIVE',    gold: 50,  xp: 40,  weight: 10,  cooldown: 300  },
   { id: 'BIOMETRIC_KEY',      gold: 95,  xp: 70,  weight: 4,   cooldown: 600  },
   { id: 'CORP_BADGE',         gold: 180, xp: 110, weight: 1.5, cooldown: 900  },
@@ -143,13 +143,13 @@ export const ACHIEVEMENT_DEFS = [
 // ── PRESTIGE PERK TREE ────────────────────────────────────────────────────────
 
 export const PRESTIGE_PERK_DEFS = [
-	{ id: 'GHOST_STEP',     branch: 'GHOST',     reqLevel: 1, desc: 'Siphon stamina cost reduced from 10 to 8',           effect: 'SIPHON costs 8 STA instead of 10'          },
-	{ id: 'GHOST_AIM',      branch: 'GHOST',     reqLevel: 5, desc: 'Siphon / Deep Siphon success rate permanently +10%', effect: '+10% siphon/deep-siphon success rate'       },
-	{ id: 'GUILD_MASTER',   branch: 'OVERLORD',  reqLevel: 1, desc: 'All runners generate +25% credits per cycle',        effect: 'Runner income x1.25'                        },
-	{ id: 'FAST_FENCE',     branch: 'OVERLORD',  reqLevel: 5, desc: 'Auto-Fencer triggers every 15s instead of 30s',      effect: 'Auto-Fencer CD: 15s'                        },
-	{ id: 'INTEL_DISCOUNT', branch: 'ARCHITECT', reqLevel: 1, desc: 'Intel upgrade REP costs reduced by 20%',             effect: 'Intel Upgrades -20% REP cost'               },
-	{ id: 'PROXY_OVERLOAD', branch: 'ARCHITECT', reqLevel: 5, desc: 'Effective Proxy Server count +2 levels',             effect: 'Bust threshold +20 (2 virtual proxy levels)' },
-	{ id: 'EYE_REVEAL',     branch: 'ARCHITECT', reqLevel: 1, desc: 'Reveals exact countdown to next Police Raid',        effect: 'Raid timer always visible in OPS'           },
+	{ id: 'GHOST_STEP',     branch: 'GHOST',     reqLevel: 1, cost: 1,desc: 'Siphon stamina cost reduced from 10 to 8',           effect: 'SIPHON costs 8 STA instead of 10'          },
+	{ id: 'GHOST_AIM',      branch: 'GHOST',     reqLevel: 5, cost: 3,desc: 'Siphon / Deep Siphon success rate permanently +10%', effect: '+10% siphon/deep-siphon success rate'       },
+	{ id: 'GUILD_MASTER',   branch: 'OVERLORD',  reqLevel: 1, cost: 1,desc: 'All runners generate +25% credits per cycle',        effect: 'Runner income x1.25'                        },
+	{ id: 'FAST_FENCE',     branch: 'OVERLORD',  reqLevel: 5, cost: 3,desc: 'Auto-Fencer triggers every 15s instead of 30s',      effect: 'Auto-Fencer CD: 15s'                        },
+	{ id: 'INTEL_DISCOUNT', branch: 'ARCHITECT', reqLevel: 1, cost: 1,desc: 'Intel upgrade REP costs reduced by 20%',             effect: 'Intel Upgrades -20% REP cost'               },
+	{ id: 'PROXY_OVERLOAD', branch: 'ARCHITECT', reqLevel: 5, cost: 3,desc: 'Effective Proxy Server count +2 levels',             effect: 'Bust threshold +20 (2 virtual proxy levels)' },
+	{ id: 'EYE_REVEAL',     branch: 'ARCHITECT', reqLevel: 1, cost: 1,desc: 'Reveals exact countdown to next Police Raid',        effect: 'Raid timer always visible in OPS'           },
 ];
 
 // ── PROGRESSIVE DISCLOSURE ────────────────────────────────────────────────────
@@ -243,9 +243,12 @@ export const UPGRADE_DEFS = [
   { key: 'traceEraser',    label: 'TRACE_ERASER',    baseCost: 150, max: 6,  effect: 'Heat decay +0.1/s / lvl'       },
   { key: 'iceBreaker',     label: 'ICE_BREAKER',     baseCost: 350, max: 5,  effect: 'Bust lockout -1s / lvl'        },
   { key: 'darkChannel',    label: 'DARK_CHANNEL',    baseCost: 200, max: 8,  effect: 'Item cooldown -30s / lvl'      },
-  { key: 'voidDrive',         label: 'VOID_DRIVE',         baseCost: 500, max: 6, effect: 'Inventory +2 slots / lvl'               },
+  { key: 'voidDrive', label: 'VOID_DRIVE', baseCost: 500, max: 6, effect: 'Inventory +5 slots / lvl' },
   { key: 'proxyServers',     label: 'PROXY_SERVERS',     baseCost: 400, max: 5, effect: 'Bust threshold +10 / lvl (default 100)' },
   { key: 'quantumEncryption',label: 'QUANTUM_ENCRYPTION',baseCost: 800, max: 1, effect: 'On BUSTED: save 20% of inventory'        },
+  { key: 'safehouse',      label: 'SAFEHOUSE_NETWORK',  baseCost: 1500, max: 6, effect: 'Offline cap +2 hours / lvl' },
+  { key: 'xpBoost',       label: 'NEURAL_TRAINING',   baseCost: 2000, max: 5, effect: 'Action XP +20% / lvl' },
+  { key: 'runnerStealth', label: 'SYNDICATE_STEALTH', baseCost: 3500, max: 4, effect: 'Runner Heat -25% / lvl' },
   { key: 'autoFencer',       label: 'AUTO_FENCER',       baseCost: 500, max: 1, effect: 'Auto-sell cold items every 30s'          },
   { key: 'aiSubroutine',    label: 'AI_SUBROUTINE',     baseCost: 600,  max: 1, effect: 'Every 60min: auto-reduce heat by 25'       },
   { key: 'hwOverclock',     label: 'HW_OVERCLOCK',      baseCost: 1000, max: 3, effect: 'Runners +15% speed · Heat x1.5/cycle / lvl' },
@@ -505,7 +508,8 @@ function addActionLog(state, type, { item = null, xp = 0, heat = 0, critical = f
 }
 
 function getMaxInventory(upgrades) {
-  return 12 + (upgrades.voidDrive ?? 0) * 2;
+  // Základ je 20 slotov. Každý lvl VOID_DRIVE pridá 5 ďalších.
+  return 20 + (upgrades.voidDrive ?? 0) * 5; 
 }
 
 function makeItem(template, districtMult = 1, upgrades = {}, intelUpgrades = {}) {
@@ -683,7 +687,8 @@ export function siphon(state) {
   const prefixHeatMult = rawItem.prefixHeatMult ?? 1;
   const prefixXpMult   = rawItem.prefixXpMult   ?? 1;
   const heatOk       = Math.round(5 * heatMult * protoHeatMult * prefixHeatMult);
-  const finalXp      = Math.round(loot.xp * protoXpMult * prefixXpMult);
+  const xpBonus = 1 + (state.upgrades?.xpBoost ?? 0) * 0.20;
+  const finalXp = Math.round(loot.xp * protoXpMult * prefixXpMult * xpBonus);
   const isHighValue  = HIGH_VALUE_IDS.has(loot.id);
   const protoRawItem = protoCreditMult !== 1
     ? { ...rawItem, gold: Math.round(rawItem.gold * protoCreditMult) }
@@ -767,7 +772,8 @@ export function breach(state) {
   const prefixHeatMult = rawItem.prefixHeatMult ?? 1;
   const prefixXpMult   = rawItem.prefixXpMult   ?? 1;
   const heatOk       = Math.round(15 * heatMult * protoHeatMult * prefixHeatMult);
-  const finalXp      = Math.round(loot.xp * protoXpMult * prefixXpMult);
+  const xpBonus = 1 + (state.upgrades?.xpBoost ?? 0) * 0.20;
+  const finalXp = Math.round(loot.xp * protoXpMult * prefixXpMult * xpBonus);
   const isHighValue  = HIGH_VALUE_IDS.has(loot.id);
   const protoRawItem = protoCreditMult !== 1
     ? { ...rawItem, gold: Math.round(rawItem.gold * protoCreditMult) }
@@ -848,7 +854,8 @@ export function deepSiphon(state) {
   const prefixHeatMult = rawItem.prefixHeatMult ?? 1;
   const prefixXpMult   = rawItem.prefixXpMult   ?? 1;
   const heatOk       = Math.round(8 * heatMult * protoHeatMult * prefixHeatMult);
-  const finalXp      = Math.round(loot.xp * protoXpMult * prefixXpMult);
+  const xpBonus = 1 + (state.upgrades?.xpBoost ?? 0) * 0.20;
+  const finalXp = Math.round(loot.xp * protoXpMult * prefixXpMult * xpBonus);
   const isHighValue  = HIGH_VALUE_IDS.has(loot.id);
   const protoRawItem = protoCreditMult !== 1
     ? { ...rawItem, gold: Math.round(rawItem.gold * protoCreditMult) }
@@ -927,7 +934,8 @@ export function mainframeHack(state) {
   const prefixHeatMult = rawItem.prefixHeatMult ?? 1;
   const prefixXpMult   = rawItem.prefixXpMult   ?? 1;
   const heatOk       = Math.round(25 * heatMult * protoHeatMult * prefixHeatMult);
-  const finalXp      = Math.round(loot.xp * protoXpMult * prefixXpMult);
+  const xpBonus = 1 + (state.upgrades?.xpBoost ?? 0) * 0.20;
+  const finalXp = Math.round(loot.xp * protoXpMult * prefixXpMult * xpBonus);
   const isHighValue  = HIGH_VALUE_IDS.has(loot.id);
   const protoRawItem = protoCreditMult !== 1
     ? { ...rawItem, gold: Math.round(rawItem.gold * protoCreditMult) }
@@ -1152,8 +1160,14 @@ export function setDistrict(state, district) {
 
 export function prestige(state) {
   if (state.level < 10 || (state.runGoldEarned ?? 0) < 100000) return state;
+  
+  // Výpočet bodov podľa celkového zárobku (odmocninová krivka)
+  // 100k = 1 bod, 400k = 2 body, 900k = 3 body, 1.6M = 4 body...
+  const pointsEarned = Math.max(1, Math.floor(Math.sqrt((state.runGoldEarned ?? 0) / 100000)));
+  
   const newPrestige = (state.prestige ?? 0) + 1;
   const mult        = 1 + newPrestige * 0.25;
+  
   let next = {
     // Reset
     gold:               0,
@@ -1203,9 +1217,9 @@ export function prestige(state) {
     zeroMessages:       state.zeroMessages ?? [],
     achievements:       state.achievements ?? {},
     prestigePerks:      state.prestigePerks ?? {},
-    prestigePoints:     (state.prestigePoints ?? 0) + 1,
+    prestigePoints:     (state.prestigePoints ?? 0) + pointsEarned,
     activeProtocol:     state.activeProtocol ?? 'NONE',
-    log: addLog([], `>> PRESTIGE ACTIVATED :: RUN #${newPrestige} INITIATED :: MULTIPLIER x${mult.toFixed(2)} :: +1 PERK POINT`),
+    log: addLog([], `>> PRESTIGE ACTIVATED :: RUN #${newPrestige} :: MULTIPLIER x${mult.toFixed(2)} :: +${pointsEarned} PERK POINT(S)`),
   };
   next = addZero(next, 'first_prestige');
   return next;
@@ -1214,12 +1228,13 @@ export function prestige(state) {
 export function buyPrestigePerk(state, perkId) {
 	const def = PRESTIGE_PERK_DEFS.find(d => d.id === perkId);
 	if (!def) return state;
-	if ((state.prestigePoints ?? 0) < 1) return state;
+	const cost = def.cost ?? 1; // Pridaj túto premennú
+	if ((state.prestigePoints ?? 0) < cost) return state; // Zmeň < 1 na < cost
 	if ((state.prestigePerks ?? {})[perkId]) return state;
 	if ((def.reqLevel ?? 1) > (state.level ?? 1)) return state;
 	return {
 		...state,
-		prestigePoints: (state.prestigePoints ?? 0) - 1,
+		prestigePoints: (state.prestigePoints ?? 0) - cost, // Zmeň - 1 na - cost
 		prestigePerks:  { ...(state.prestigePerks ?? {}), [perkId]: true },
 		log: addLog(state.log, `:: PRESTIGE PERK ACTIVATED :: ${perkId} :: ${def.effect}`),
 	};
@@ -1229,7 +1244,10 @@ export function buyPrestigePerk(state, perkId) {
 
 export function calculateOfflineProgress(state, nowMs) {
   const rawElapsed = (nowMs - (state.lastTickTime ?? nowMs)) / 1000;
-  const elapsed    = Math.min(rawElapsed, state.offlineAccrualCap ?? 14400);
+  // ZMENENÝ RIADOK: Základ sú 4 hodiny (14400s) + každá úroveň Safehouse pridá 2 hodiny (7200s)
+  const maxOffline = 14400 + ((state.upgrades?.safehouse ?? 0) * 7200);
+  const elapsed    = Math.min(rawElapsed, maxOffline);
+  
   if (elapsed < 60) return null;
 
   const mult   = state.prestigeMultiplier ?? 1;
@@ -1323,11 +1341,14 @@ export function tick(state) {
     return { ...s, bustedLockout: s.bustedLockout - 1, lastTickTime: nowMs };
   }
 
-  // ── Heat decay (paused during heat spike unless lay_low is active) ────────
+  // ── Heat decay (ACTIVE TRACE) ────────
   if ((s.heatSpikeTimer ?? 0) > 0) {
     s = { ...s, heatSpikeTimer: s.heatSpikeTimer - 1 };
     if (s.layLowActive) {
       s = { ...s, heat: Math.max(0, parseFloat((s.heat - 2).toFixed(2))) };
+    } else {
+      // ACTIVE TRACE: Heat actively goes UP by 1.5 per second!
+      s = { ...s, heat: Math.min(100, parseFloat((s.heat + 1.5).toFixed(2))) };
     }
   } else {
     const distDecayBase = DISTRICTS[s.district]?.heatDecayBase ?? 0.2;
@@ -1372,7 +1393,8 @@ export function tick(state) {
 		const specGoldMult = spec === 'GREEDY' ? 1.5 : 1;
 		const specHeatMult = spec === 'SHADOW' ? 0.5 : 1;
 		const income = applyIncome(cur, count * crPerCycle * synergyMult * guildMult * specGoldMult);
-		const heat   = DEV_MODE ? 0 : count * heatPerCycle * specHeatMult;
+		const stealthMult = 1 - (cur.upgrades?.runnerStealth ?? 0) * 0.25;
+		const heat = DEV_MODE ? 0 : count * heatPerCycle * specHeatMult * stealthMult;
 		let next = {
 			...cur,
 			gold:            income.gold,
@@ -1553,6 +1575,44 @@ export function purgeLogs(state) {
 		...state,
 		systemScan: { active: false, timer: 0, nextIn: randomScanInterval() },
 		log: addLog(state.log, ':: LOCAL_LOGS PURGED :: SCAN EVADED'),
+	};
+}
+
+export function counterHack(state) {
+	if (!(state.systemScan?.active ?? false)) return state;
+	if (state.stamina < 50) {
+		return { ...state, log: addLog(state.log, ':: COUNTER-HACK FAILED — INSUFFICIENT STAMINA (50 REQ)') };
+	}
+
+	const newStamina = state.stamina - 50;
+
+	// 70% šanca na kruté zlyhanie
+	if (Math.random() > 0.30) {
+		let next = {
+			...state,
+			stamina:    newStamina,
+			heat:       100, // Okamžitý Bust
+			systemScan: { active: false, timer: 0, nextIn: randomScanInterval() },
+			log:        addLog(state.log, '!! COUNTER-HACK FAILED !! THE EYE HAS TRACED YOU !!'),
+		};
+		next = applyBustedCheck(next);
+		// Dvojitý trest za aroganciu
+		next.bustedLockout = (next.bustedLockout || 10) * 2; 
+		return next;
+	}
+
+	// 30% šanca na masívny úspech
+	const reward = 5000;
+	const income = applyIncome(state, reward);
+	return {
+		...state,
+		stamina:         newStamina,
+		heat:            0,
+		gold:            income.gold,
+		totalGoldEarned: income.totalGoldEarned,
+		runGoldEarned:   income.runGoldEarned,
+		systemScan:      { active: false, timer: 0, nextIn: randomScanInterval() },
+		log:             addLog(state.log, `:: COUNTER-HACK SUCCESS :: TRACE OVERRIDDEN :: +${income._earned.toLocaleString()} CR :: HEAT ZEROED`),
 	};
 }
 
