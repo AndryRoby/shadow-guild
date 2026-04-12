@@ -11,6 +11,7 @@ import {
   UPGRADE_DEFS, INTEL_UPGRADE_DEFS, DISTRICTS, CHALLENGE_DEFS, ACHIEVEMENT_DEFS, PRESTIGE_PERK_DEFS,
   getUpgradeCost, getRunnerCost, isUnlocked, buyPrestigePerk, setProtocol, purgeLogs, setRunnerSpec,
   DEV_MODE, SAVE_KEY, exportSave, importSave, ITEM_FLAVOR, PROTOCOL_DEFS, counterHack,
+  CITY_MAP, CITY_ZONES, canCapture, captureHex, calculateMapModifiers, getInitialDiscovery,
 } from './gameLogic.js';
 
 // maxInventory is always derived — never stored in state
@@ -75,6 +76,8 @@ const FRESH_STATE = {
   systemScan:          { active: false, timer: 0, nextIn: DEV_MODE ? 45 : 1200 },
   runnerXp:            { streetRunner: 0, dataThief: 0, infiltrator: 0, fixer: 0, shadowBroker: 0 },
   runnerSpec:          { streetRunner: null, dataThief: null, infiltrator: null, fixer: null, shadowBroker: null },
+  capturedHexes:       ['H00'],
+  mapDiscovery:        ['H00','H01','H02','H03'],
 };
 
 const DEV_START = { ...FRESH_STATE, gold: 50000, reputation: 50, level: 5, runGoldEarned: 50000, totalGoldEarned: 50000 };
@@ -97,6 +100,8 @@ function loadInitialState() {
         runnerXp:      { ...FRESH_STATE.runnerXp,   ...parsed.runnerXp },
         runnerSpec:    { ...FRESH_STATE.runnerSpec,  ...parsed.runnerSpec },
         systemScan:    parsed.systemScan ?? FRESH_STATE.systemScan,
+        capturedHexes: parsed.capturedHexes ?? FRESH_STATE.capturedHexes,
+        mapDiscovery:  parsed.mapDiscovery  ?? FRESH_STATE.mapDiscovery,
       };
     }
   } catch { /* corrupt */ }
@@ -128,6 +133,7 @@ function reducer(state, action) {
     case 'PURGE_LOGS':        return purgeLogs(state);
     case 'COUNTER_HACK':      return counterHack(state);
     case 'SET_RUNNER_SPEC':   return setRunnerSpec(state, action.runnerType, action.spec);
+    case 'CAPTURE_HEX':       return captureHex(state, action.hexId);
     case 'APPLY_OFFLINE': {
       const { earnedGold, heatAfter, elapsed } = action.payload;
       const t = new Date().toLocaleTimeString('en-US', { hour12: false });
@@ -1206,18 +1212,233 @@ export default function App() {
             {/* ── SETTINGS TAB ── */}
             {activeTab === 'SETTINGS' && (
               <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+
+                {/* ACHIEVEMENTS */}
                 <span style={{ ...S.panelLabel, marginBottom: 8 }}>ACHIEVEMENTS</span>
                 {ACHIEVEMENT_DEFS.map(def => {
                   const unlocked = !!((state.achievements ?? {})[def.id]);
                   return (
-                    <div key={def.id} style={{ ...S.card, marginBottom: 3, borderLeft: `2px solid ${unlocked ? '#22c55e' : 'var(--surface-high)'}` }}>
+                    <div key={def.id} style={{
+                      ...S.card, marginBottom: 3,
+                      borderLeft: `2px solid ${unlocked ? '#22c55e' : 'var(--surface-high)'}`,
+                    }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, color: unlocked ? '#22c55e' : 'var(--amber)', letterSpacing: '0.07rem' }}>{def.id}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: unlocked ? '#22c55e' : 'var(--amber)', letterSpacing: '0.07rem' }}>
+                          {def.id}
+                        </span>
+                        <span style={{ fontSize: 9, color: unlocked ? '#22c55e' : 'var(--muted)', letterSpacing: '0.08rem' }}>
+                          {unlocked ? '[UNLOCKED]' : '[LOCKED]'}
+                        </span>
                       </div>
                       <div style={{ fontSize: 9, color: 'var(--muted)', marginBottom: 2 }}>{def.desc}</div>
+                      <div style={{ fontSize: 9, color: unlocked ? '#22c55e' : 'var(--muted)' }}>
+                        {def.reward.rep ? `+${def.reward.rep} REP` : `+${def.reward.gold} CR`}
+                      </div>
                     </div>
                   );
                 })}
+
+                {/* PRESTIGE PERK TREE */}
+                {(state.prestige ?? 0) >= 1 && (<>
+                  <span style={{ ...S.panelLabel, marginTop: 14, marginBottom: 4 }}>PRESTIGE PERKS</span>
+                  <div style={{ fontSize: 9, color: 'var(--muted)', marginBottom: 6, letterSpacing: '0.05rem' }}>
+                    {`PRESTIGE #${state.prestige} · x${(state.prestigeMultiplier ?? 1).toFixed(2)} MULTIPLIER`}
+                  </div>
+                  <div style={{
+                    fontSize: 13, fontWeight: 700, letterSpacing: '0.08rem', marginBottom: 12,
+                    color: prestigePoints > 0 ? 'var(--amber)' : 'var(--muted)',
+                  }}>
+                    {prestigePoints > 0 ? `SKILL POINTS AVAILABLE: ${prestigePoints}` : 'NO POINTS AVAILABLE'}
+                  </div>
+                  {['GHOST', 'OVERLORD', 'ARCHITECT'].map(branch => {
+                    const branchColors = { GHOST: '#00d4ff', OVERLORD: '#f97316', ARCHITECT: '#b347ff' };
+                    const bColor = branchColors[branch];
+                    const perks = PRESTIGE_PERK_DEFS.filter(d => d.branch === branch);
+                    return (
+                      <div key={branch} style={{ marginBottom: 10 }}>
+                        <div style={{ fontSize: 9, color: bColor, letterSpacing: '0.12rem', fontWeight: 700, marginBottom: 5, borderBottom: `1px solid ${bColor}`, paddingBottom: 3 }}>
+                          :: {branch}
+                        </div>
+                        {perks.map(def => {
+                          const owned     = !!prestigePerks[def.id];
+                          const lvlMet    = state.level >= (def.reqLevel ?? 1);
+                          const canBuy    = prestigePoints >= 1 && !owned && lvlMet;
+                          const lockMsg   = !lvlMet ? `[LVL ${def.reqLevel}]` : !owned && prestigePoints < 1 ? '[NO PTS]' : null;
+                          return (
+                            <div key={def.id} style={{
+                              ...S.card, marginBottom: 3,
+                              borderLeft: `2px solid ${owned ? bColor : lvlMet && prestigePoints > 0 ? 'var(--amber)' : 'var(--surface-high)'}`,
+                              opacity: (!lvlMet) ? 0.45 : 1,
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07rem', color: owned ? bColor : 'var(--amber)' }}>
+                                  {def.id}
+                                  {def.reqLevel > 1 && <span style={{ marginLeft: 5, fontSize: 8, color: 'var(--muted)', fontWeight: 400 }}>[LVL {def.reqLevel}+]</span>}
+                                </span>
+                                {owned
+                                  ? <span style={{ fontSize: 9, color: bColor, letterSpacing: '0.08rem' }}>[ACTIVE]</span>
+                                  : lockMsg
+                                  ? <span style={{ fontSize: 9, color: 'var(--muted)' }}>{lockMsg}</span>
+                                  : <button
+                                      onClick={() => canBuy && dispatch({ type: 'BUY_PRESTIGE_PERK', perkId: def.id })}
+                                      style={{
+                                        ...S.settingsBtn, padding: '3px 10px', width: 'auto',
+                                        borderColor: canBuy ? bColor : 'var(--muted)',
+                                        color: canBuy ? bColor : 'var(--muted)',
+                                        opacity: canBuy ? 1 : 0.4,
+                                        cursor: canBuy ? 'pointer' : 'not-allowed',
+                                      }}
+                                    >SELECT</button>
+                                }
+                              </div>
+                              <div style={{ fontSize: 9, color: 'var(--muted)', marginBottom: 2 }}>{def.desc}</div>
+                              <div style={{ fontSize: 9, color: 'var(--muted)', fontStyle: 'italic' }}>{def.effect}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </>)}
+
+                {/* PRESTIGE */}
+                <span style={{ ...S.panelLabel, marginBottom: 8 }}>PRESTIGE</span>
+                <div style={S.card}>
+                  <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>
+                    <Icon component={Star} size={10} color={canPrestige ? '#f97316' : 'var(--muted)'} />
+                    PRESTIGE SYSTEM
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 6 }}>
+                    Unlock: Level 10 + 100,000 CR earned this run.
+                    Resets: gold, level, upgrades, runners.
+                    Keeps: REP, intel upgrades, prestige count.
+                  </div>
+                  <div style={{ fontSize: 10, padding: '3px 7px', marginBottom: 7, background: 'var(--surface-low)', borderLeft: '2px solid var(--amber)', letterSpacing: '0.05rem' }}>
+                    <span style={{ color: state.level >= 10 ? '#22c55e' : 'var(--amber)' }}>Level: {state.level}/10</span>
+                    {' · '}
+                    <span style={{ color: runGoldEarned >= 100000 ? '#22c55e' : 'var(--amber)' }}>Run earned: {runGoldEarned.toLocaleString()}/100,000</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 3 }}>
+                    This run:{' '}
+                    <span style={{ color: runGoldEarned >= 100000 ? '#22c55e' : 'var(--amber)' }}>
+                      {runGoldEarned.toLocaleString()} / 100,000 CR
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 8 }}>
+                    Lifetime:{' '}
+                    <span style={{ color: 'var(--amber)' }}>
+                      {(state.totalGoldEarned ?? 0).toLocaleString()} CR
+                    </span>
+                  </div>
+                  <button
+                    disabled={!canPrestige}
+                    onClick={() => canPrestige && dispatch({ type: 'PRESTIGE' })}
+                    style={{
+                      ...S.settingsBtn,
+                      borderColor: canPrestige ? '#f97316' : 'var(--muted)',
+                      color:       canPrestige ? '#f97316' : 'var(--muted)',
+                      opacity:     canPrestige ? 1 : 0.4,
+                      cursor:      canPrestige ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    {canPrestige ? `PRESTIGE → RUN #${(state.prestige ?? 0) + 1} [x${(1 + ((state.prestige ?? 0) + 1) * 0.25).toFixed(2)}]` : 'PRESTIGE [LOCKED]'}
+                  </button>
+                </div>
+
+                {/* SAVE */}
+                <span style={{ ...S.panelLabel, marginTop: 14, marginBottom: 8 }}>SAVE_SYSTEM</span>
+
+                {/* Export */}
+                <div style={S.card}>
+                  <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>EXPORT_SAVE</div>
+                  <button
+                    onClick={() => {
+                      try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch { /* quota */ }
+                      setExportString(exportSave(state));
+                      setTimeout(() => exportRef.current?.select(), 50);
+                    }}
+                    style={{ ...S.settingsBtn, marginBottom: 8 }}
+                  >
+                    GENERATE EXPORT
+                  </button>
+                  {exportString && (
+                    <>
+                      <textarea
+                        ref={exportRef}
+                        readOnly
+                        value={exportString}
+                        style={{
+                          width: '100%', height: 54, background: 'var(--bg)',
+                          border: '1px solid var(--muted)', color: 'var(--amber)',
+                          fontFamily: '"JetBrains Mono", monospace', fontSize: 8,
+                          padding: '5px', resize: 'none', outline: 'none',
+                          boxSizing: 'border-box', marginBottom: 4,
+                        }}
+                      />
+                      <button
+                        onClick={() => exportRef.current?.select()}
+                        style={{ ...S.settingsBtn, fontSize: 9 }}
+                      >
+                        SELECT ALL
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* Import */}
+                <div style={{ ...S.card, marginTop: 4 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>IMPORT_SAVE</div>
+                  <textarea
+                    value={importInput}
+                    onChange={e => { setImportInput(e.target.value); setImportError(''); }}
+                    placeholder="Paste save string here..."
+                    style={{
+                      width: '100%', height: 54, background: 'var(--bg)',
+                      border: '1px solid var(--muted)', color: 'var(--amber)',
+                      fontFamily: '"JetBrains Mono", monospace', fontSize: 9,
+                      padding: '6px', resize: 'none', outline: 'none',
+                      boxSizing: 'border-box', marginBottom: 6,
+                    }}
+                  />
+                  {importError && <div style={{ fontSize: 10, color: '#ef4444', marginBottom: 6 }}>{importError}</div>}
+                  <button
+                    onClick={() => {
+                      const parsed = importSave(importInput.trim());
+                      if (!parsed) { setImportError('INVALID SAVE DATA'); return; }
+                      const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+                      dispatch({ type: 'LOAD_SAVE', payload: parsed, ts });
+                      setImportInput('');
+                      setImportError('');
+                      setExportString('');
+                    }}
+                    style={S.settingsBtn}
+                  >
+                    LOAD SAVE
+                  </button>
+                </div>
+
+                {/* Hard reset */}
+                <div style={{ ...S.card, marginTop: 4 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6, color: '#ef4444' }}>RESET_ALL</div>
+                  <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 8 }}>Wipes all progress. Cannot be undone.</div>
+                  {!resetConfirm ? (
+                    <button onClick={() => setResetConfirm(true)} style={{ ...S.settingsBtn, borderColor: '#ef4444', color: '#ef4444' }}>
+                      RESET
+                    </button>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => {
+                        localStorage.removeItem(SAVE_KEY);
+                        dispatch({ type: 'HARD_RESET' });
+                        setResetConfirm(false);
+                        setExportString('');
+                      }} style={{ ...S.settingsBtn, flex: 1, background: '#ef4444', color: '#fff', borderColor: '#ef4444' }}>
+                        CONFIRM
+                      </button>
+                      <button onClick={() => setResetConfirm(false)} style={{ ...S.settingsBtn, flex: 1 }}>CANCEL</button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

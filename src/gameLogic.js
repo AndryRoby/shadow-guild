@@ -227,11 +227,394 @@ const RUNNER_LABELS = {
 // ── DISTRICTS ─────────────────────────────────────────────────────────────────
 
 export const DISTRICTS = {
-  neon_strip:   { label: 'NEON_STRIP',   lootMult: 1.0, heatDecayBase: 0.2,  unlockLevel: 1, requiresPrestige: 0 },
-  corp_zone:    { label: 'CORP_ZONE',    lootMult: 1.5, heatDecayBase: 0.16, unlockLevel: 5, requiresPrestige: 0 },
-  apex_citadel: { label: 'APEX_CITADEL', lootMult: 2.5, heatDecayBase: 0.1,  unlockLevel: 8, requiresPrestige: 0 },
-  dark_net:     { label: 'DARK_NET',     lootMult: 3.5, heatDecayBase: 0.4,  unlockLevel: 8, requiresPrestige: 1 },
+  neon_strip:   { label: 'NEON_STRIP',   lootMult: 1.0, heatDecayBase: 0.2,  unlockLevel: 1, requiresPrestige: 0, mapX: 50, mapY: 80 },
+  corp_zone:    { label: 'CORP_ZONE',    lootMult: 1.5, heatDecayBase: 0.16, unlockLevel: 5, requiresPrestige: 0, mapX: 22, mapY: 44 },
+  apex_citadel: { label: 'APEX_CITADEL', lootMult: 2.5, heatDecayBase: 0.1,  unlockLevel: 8, requiresPrestige: 0, mapX: 78, mapY: 42 },
+  dark_net:     { label: 'DARK_NET',     lootMult: 3.5, heatDecayBase: 0.4,  unlockLevel: 8, requiresPrestige: 1, mapX: 50, mapY: 13 },
 };
+
+// ── CITY ZONES ────────────────────────────────────────────────────────────────
+
+export const CITY_ZONES = {
+	Z1: { label: 'SILENT SLUMS',   riskLevel: 1, theme: 'Start zone'        },
+	Z2: { label: 'IRON WORKS',     riskLevel: 2, theme: 'Industrial'         },
+	Z3: { label: 'NEON GARDENS',   riskLevel: 2, theme: 'Social/Reputation'  },
+	Z4: { label: 'SILICON VALLEY', riskLevel: 3, theme: 'Tech/XP'            },
+	Z5: { label: 'FINANCIAL HUB',  riskLevel: 3, theme: 'High Gold'          },
+	Z6: { label: 'THE CITADEL',    riskLevel: 5, theme: 'Gov / GID HQ'       },
+	Z7: { label: 'THE UNDERBELLY', riskLevel: 4, theme: 'Deep Web'           },
+};
+
+// ── CITY MAP ──────────────────────────────────────────────────────────────────
+// 30 POI nodes (H00–H29) + 11 EMPTY_BLOCK buffers (E00–E10) = 41 hexes.
+// Coordinate space: 900 × 1000.  Connections define the Lattice System.
+// H00 is PLAYER-owned at start.  Zone 7 is reachable only via H25 → E10.
+
+export const CITY_MAP = {
+
+	// ── ZONE 1: SILENT SLUMS ─────────────────────────────────────────────────
+	H00: {
+		id: 'H00', label: 'QUANTUM_RELAY',    type: 'POI',        zoneId: 'Z1', icon: '[▲]',
+		coords: { x: 200, y: 800 },
+		connections: ['H01','H02','H03'],
+		captureStatus: 'OWNED', faction: 'PLAYER',
+		effectHooks: { heatDecayBonus: 0.05 },
+	},
+	H01: {
+		id: 'H01', label: 'BACKUP_NODE',       type: 'POI',        zoneId: 'Z1', icon: '[▲]',
+		coords: { x: 280, y: 760 },
+		connections: ['H00','H03','E00','H25'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { bustThresholdBonus: 10 },
+	},
+	H02: {
+		id: 'H02', label: 'ABANDONED_SECTOR',  type: 'POI',        zoneId: 'Z1', icon: '[⬡]',
+		coords: { x: 120, y: 760 },
+		connections: ['H00','H03'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { heatDecayBonus: 0.03 },
+	},
+	H03: {
+		id: 'H03', label: 'ROOFTOP_NETWORK',   type: 'POI',        zoneId: 'Z1', icon: '[⬡]',
+		coords: { x: 200, y: 720 },
+		connections: ['H00','H01','H02','E01'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { goldMult: 1.03 },
+	},
+	H25: {
+		id: 'H25', label: 'SUBWAY_NEXUS',      type: 'POI',        zoneId: 'Z1', icon: '[⬡]',
+		coords: { x: 320, y: 800 },
+		connections: ['H01','E00','E10'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: {},
+	},
+	E00: {
+		id: 'E00', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z1', icon: '[□]',
+		coords: { x: 280, y: 840 },
+		connections: ['H01','H25','E02'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: {},
+	},
+
+	// ── ZONE 2: IRON WORKS ───────────────────────────────────────────────────
+	E01: {
+		id: 'E01', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z2', icon: '[□]',
+		coords: { x: 160, y: 640 },
+		connections: ['H03','H04','H05'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: {},
+	},
+	H04: {
+		id: 'H04', label: 'GRID_OVERLOADER',   type: 'POI',        zoneId: 'Z2', icon: '[▲]',
+		coords: { x: 80, y: 580 },
+		connections: ['E01','H05','H06'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: {},
+	},
+	H05: {
+		id: 'H05', label: 'DRONE_NEST',        type: 'POI',        zoneId: 'Z2', icon: '[✕]',
+		coords: { x: 180, y: 560 },
+		connections: ['E01','H04','H07'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { raidPenaltyReduction: 0.10 },
+	},
+	H06: {
+		id: 'H06', label: 'TRAP_GRID',         type: 'POI',        zoneId: 'Z2', icon: '[✕]',
+		coords: { x: 80, y: 500 },
+		connections: ['H04','H07'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: {},
+	},
+	H07: {
+		id: 'H07', label: 'CRYPTO_MINE',       type: 'POI',        zoneId: 'Z2', icon: '[◎]',
+		coords: { x: 180, y: 460 },
+		connections: ['H05','H06','E04'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { passiveGold: 3 },
+	},
+
+	// ── ZONE 3: NEON GARDENS ─────────────────────────────────────────────────
+	E02: {
+		id: 'E02', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z3', icon: '[□]',
+		coords: { x: 440, y: 800 },
+		connections: ['E00','H08','H09'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: {},
+	},
+	H08: {
+		id: 'H08', label: 'AD_EXCHANGE_CORE',  type: 'POI',        zoneId: 'Z3', icon: '[◎]',
+		coords: { x: 540, y: 800 },
+		connections: ['E02','H09','H10'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { goldMult: 1.06 },
+	},
+	H09: {
+		id: 'H09', label: 'IDENTITY_FORGE',    type: 'POI',        zoneId: 'Z3', icon: '[◈]',
+		coords: { x: 620, y: 760 },
+		connections: ['E02','H08','H10','H11','E03'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { siphonSuccessBonus: 0.05 },
+	},
+	H10: {
+		id: 'H10', label: 'DEEPFAKE_STUDIO',   type: 'POI',        zoneId: 'Z3', icon: '[◈]',
+		coords: { x: 540, y: 720 },
+		connections: ['H08','H09'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { heatDecayBonus: 0.05 },
+	},
+	H11: {
+		id: 'H11', label: 'SCANNER_DOME',      type: 'POI',        zoneId: 'Z3', icon: '[⬡]',
+		coords: { x: 700, y: 800 },
+		connections: ['H09'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: {},
+	},
+
+	// ── ZONE 4: SILICON VALLEY ───────────────────────────────────────────────
+	E03: {
+		id: 'E03', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z4', icon: '[□]',
+		coords: { x: 640, y: 640 },
+		connections: ['H09','H12','H14'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: {},
+	},
+	H12: {
+		id: 'H12', label: 'UPLINK_TOWER',      type: 'POI',        zoneId: 'Z4', icon: '[▲]',
+		coords: { x: 740, y: 580 },
+		connections: ['E03','H13','H14'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { goldMult: 1.05 },
+	},
+	H13: {
+		id: 'H13', label: 'SIGNAL_SCRAMBLER',  type: 'POI',        zoneId: 'Z4', icon: '[▲]',
+		coords: { x: 820, y: 540 },
+		connections: ['H12','H14','H15'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { siphonSuccessBonus: 0.05 },
+	},
+	H14: {
+		id: 'H14', label: 'DATA_HARBOR',       type: 'POI',        zoneId: 'Z4', icon: '[◎]',
+		coords: { x: 740, y: 500 },
+		connections: ['E03','H12','H13','H15','H16'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { passiveGold: 5 },
+	},
+	H15: {
+		id: 'H15', label: 'GHOST_LAB',         type: 'POI',        zoneId: 'Z4', icon: '[◈]',
+		coords: { x: 820, y: 460 },
+		connections: ['H13','H14'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { heatDecayBonus: 0.08 },
+	},
+	H16: {
+		id: 'H16', label: 'EMP_ARRAY',         type: 'POI',        zoneId: 'Z4', icon: '[✕]',
+		coords: { x: 740, y: 420 },
+		connections: ['H14','E06','E08'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { bustThresholdBonus: 10 },
+	},
+
+	// ── ZONE 5: FINANCIAL HUB ────────────────────────────────────────────────
+	E04: {
+		id: 'E04', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z5', icon: '[□]',
+		coords: { x: 200, y: 400 },
+		connections: ['H07','H19','E05'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: {},
+	},
+	E05: {
+		id: 'E05', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z5', icon: '[□]',
+		coords: { x: 360, y: 420 },
+		connections: ['E04','H20','E06'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: {},
+	},
+	E06: {
+		id: 'E06', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z5', icon: '[□]',
+		coords: { x: 580, y: 400 },
+		connections: ['H16','H20','E05'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: {},
+	},
+	H17: {
+		id: 'H17', label: 'BLACK_VAULT',       type: 'POI',        zoneId: 'Z5', icon: '[◎]',
+		coords: { x: 300, y: 300 },
+		connections: ['H19','H18'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { passiveGold: 8 },
+	},
+	H18: {
+		id: 'H18', label: 'DARK_AUCTION_HOUSE', type: 'POI',       zoneId: 'Z5', icon: '[◎]',
+		coords: { x: 420, y: 260 },
+		connections: ['H17','H20','E07'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { goldMult: 1.10 },
+	},
+	H19: {
+		id: 'H19', label: 'HEAT_SINK_FACILITY', type: 'POI',       zoneId: 'Z5', icon: '[◈]',
+		coords: { x: 220, y: 300 },
+		connections: ['E04','H17','H20'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { heatDecayBonus: 0.12 },
+	},
+	H20: {
+		id: 'H20', label: 'FIREWALL_FORTRESS', type: 'POI',        zoneId: 'Z5', icon: '[✕]',
+		coords: { x: 380, y: 360 },
+		connections: ['H18','H19','E05'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { bustThresholdBonus: 15 },
+	},
+
+	// ── ZONE 6: THE CITADEL ──────────────────────────────────────────────────
+	// Two entry routes: Z5 → E07 → H21  and  Z4 → E08 → H24
+	E07: {
+		id: 'E07', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z6', icon: '[□]',
+		coords: { x: 540, y: 240 },
+		connections: ['H18','H21'],
+		captureStatus: 'LOCKED', faction: 'GID',
+		effectHooks: {},
+	},
+	E08: {
+		id: 'E08', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z6', icon: '[□]',
+		coords: { x: 740, y: 340 },
+		connections: ['H16','H24'],
+		captureStatus: 'LOCKED', faction: 'GID',
+		effectHooks: {},
+	},
+	H21: {
+		id: 'H21', label: 'CORPORATE_HQ',      type: 'POI',        zoneId: 'Z6', icon: '[⚠]',
+		coords: { x: 660, y: 200 },
+		connections: ['E07','H22','H23','H24'],
+		captureStatus: 'LOCKED', faction: 'GID',
+		effectHooks: { goldMult: 1.08 },
+	},
+	H22: {
+		id: 'H22', label: 'HUNTER_KILLER_LAB', type: 'POI',        zoneId: 'Z6', icon: '[✕]',
+		coords: { x: 760, y: 160 },
+		connections: ['H21','H23'],
+		captureStatus: 'LOCKED', faction: 'OMNIGUARD',
+		effectHooks: {},
+	},
+	H23: {
+		id: 'H23', label: 'ORBITAL_UPLINK',    type: 'POI',        zoneId: 'Z6', icon: '[⚠]',
+		coords: { x: 640, y: 120 },
+		connections: ['H21','H22'],
+		captureStatus: 'LOCKED', faction: 'GID',
+		effectHooks: { passiveGold: 12 },
+	},
+	H24: {
+		id: 'H24', label: 'TIME_LOCK_SERVER',  type: 'POI',        zoneId: 'Z6', icon: '[⚠]',
+		coords: { x: 760, y: 280 },
+		connections: ['H21','E08'],
+		captureStatus: 'LOCKED', faction: 'GID',
+		effectHooks: { goldMult: 1.12 },
+	},
+
+	// ── ZONE 7: THE UNDERBELLY ───────────────────────────────────────────────
+	// Entry: only via H25 (SUBWAY_NEXUS) → E10.  No other path in.
+	E10: {
+		id: 'E10', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z7', icon: '[□]',
+		coords: { x: 300, y: 880 },
+		connections: ['H25','H26','H27'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: {},
+	},
+	E09: {
+		id: 'E09', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z7', icon: '[□]',
+		coords: { x: 460, y: 960 },
+		connections: ['H26','H27','H28','H29'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: {},
+	},
+	H26: {
+		id: 'H26', label: 'BLACK_ICE_LAB',     type: 'POI',        zoneId: 'Z7', icon: '[⚠]',
+		coords: { x: 380, y: 920 },
+		connections: ['E10','E09','H28'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { siphonSuccessBonus: 0.10 },
+	},
+	H27: {
+		id: 'H27', label: 'AI_CORE_FRAGMENT',  type: 'POI',        zoneId: 'Z7', icon: '[⚠]',
+		coords: { x: 300, y: 960 },
+		connections: ['E10','E09','H29'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { goldMult: 1.15 },
+	},
+	H28: {
+		id: 'H28', label: 'SURVEILLANCE_HIJACK_HUB', type: 'POI', zoneId: 'Z7', icon: '[◈]',
+		coords: { x: 480, y: 900 },
+		connections: ['H26','E09'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: { heatDecayBonus: 0.10 },
+	},
+	H29: {
+		id: 'H29', label: 'ANOMALY_SITE',      type: 'POI',        zoneId: 'Z7', icon: '[⬡]',
+		coords: { x: 400, y: 980 },
+		connections: ['H27','E09'],
+		captureStatus: 'LOCKED', faction: 'NEUTRAL',
+		effectHooks: {},
+	},
+};
+
+// ── MAP LOGIC ─────────────────────────────────────────────────────────────────
+
+// Returns true if hexId is adjacent to at least one PLAYER-owned hex.
+export function canCapture(state, hexId) {
+	const hex = CITY_MAP[hexId];
+	if (!hex) return false;
+	const owned = state.capturedHexes ?? ['H00'];
+	if (owned.includes(hexId)) return false;
+	return hex.connections.some(id => owned.includes(id));
+}
+
+// Captures a hex: adds it to capturedHexes, reveals neighbors in mapDiscovery.
+export function captureHex(state, hexId) {
+	if (!canCapture(state, hexId)) return state;
+	const hex        = CITY_MAP[hexId];
+	const captured   = [...(state.capturedHexes ?? ['H00']), hexId];
+	const discovered = [...new Set([
+		...(state.mapDiscovery ?? ['H00']),
+		hexId,
+		...hex.connections.filter(id => CITY_MAP[id]),
+	])];
+	return {
+		...state,
+		capturedHexes: captured,
+		mapDiscovery:  discovered,
+		log: addLog(state.log, `:: NODE_CAPTURED :: ${hex.label} :: ${CITY_ZONES[hex.zoneId]?.label ?? hex.zoneId}`),
+	};
+}
+
+// Aggregates all passive modifiers from currently owned POI hexes.
+// goldMult is compound-multiplicative; all others are additive sums.
+export function calculateMapModifiers(state) {
+	const owned  = state.capturedHexes ?? ['H00'];
+	const result = {
+		heatDecayBonus:       0,
+		goldMult:             1,
+		passiveGold:          0,
+		siphonSuccessBonus:   0,
+		bustThresholdBonus:   0,
+		raidPenaltyReduction: 0,
+	};
+	for (const id of owned) {
+		const hex = CITY_MAP[id];
+		if (!hex || hex.type === 'EMPTY_BLOCK') continue;
+		const h = hex.effectHooks;
+		if (h.heatDecayBonus)        result.heatDecayBonus        += h.heatDecayBonus;
+		if (h.goldMult)              result.goldMult              *= h.goldMult;
+		if (h.passiveGold)           result.passiveGold           += h.passiveGold;
+		if (h.siphonSuccessBonus)    result.siphonSuccessBonus    += h.siphonSuccessBonus;
+		if (h.bustThresholdBonus)    result.bustThresholdBonus    += h.bustThresholdBonus;
+		if (h.raidPenaltyReduction)  result.raidPenaltyReduction  += h.raidPenaltyReduction;
+	}
+	return result;
+}
+
+// Returns the initial mapDiscovery array: H00 + its immediate neighbors.
+export function getInitialDiscovery() {
+	return ['H00', ...(CITY_MAP['H00']?.connections ?? [])];
+}
 
 // ── UPGRADE DEFINITIONS ───────────────────────────────────────────────────────
 
@@ -543,7 +926,8 @@ function makeItem(template, districtMult = 1, upgrades = {}, intelUpgrades = {})
 }
 
 function applyBustedCheck(state) {
-  const bustThreshold = 100 + (state.upgrades?.proxyServers ?? 0) * 10 + ((state.prestigePerks?.PROXY_OVERLOAD) ? 20 : 0);
+  const mapBustBonus  = calculateMapModifiers(state).bustThresholdBonus;
+  const bustThreshold = 100 + (state.upgrades?.proxyServers ?? 0) * 10 + ((state.prestigePerks?.PROXY_OVERLOAD) ? 20 : 0) + mapBustBonus;
   if (state.heat < bustThreshold) return state;
   const iceBreakerLvl  = state.upgrades?.iceBreaker ?? 0;
   const lockout        = Math.max(1, 10 - iceBreakerLvl);
@@ -660,9 +1044,10 @@ export function siphon(state) {
   const protoSuccessMod = proto.successRateMod ?? 0;
   const protoCreditMult = proto.creditMult  ?? 1;
   const protoXpMult     = proto.xpMult      ?? 1;
-  const ghostAimBonus = (state.prestigePerks?.GHOST_AIM) ? 0.10 : 0;
+  const ghostAimBonus   = (state.prestigePerks?.GHOST_AIM) ? 0.10 : 0;
+  const mapSuccessBonus = calculateMapModifiers(state).siphonSuccessBonus;
   const successRate = Math.min(0.95, Math.max(0.05,
-    0.70 + (state.level - 1) * 0.03 + (state.upgrades.ghostProtocol ?? 0) * 0.02 - heatPenalty - bountyPen + protoSuccessMod + ghostAimBonus));
+    0.70 + (state.level - 1) * 0.03 + (state.upgrades.ghostProtocol ?? 0) * 0.02 - heatPenalty - bountyPen + protoSuccessMod + ghostAimBonus + mapSuccessBonus));
   const newStamina  = state.stamina - siphonCost;
   const heatFail    = Math.round(10 * heatMult * protoHeatMult);
 
@@ -828,8 +1213,9 @@ export function deepSiphon(state) {
   const protoSuccessMod = proto.successRateMod ?? 0;
   const protoCreditMult = proto.creditMult  ?? 1;
   const protoXpMult     = proto.xpMult      ?? 1;
-  const ghostAimBonus = (state.prestigePerks?.GHOST_AIM) ? 0.10 : 0;
-  const successRate = Math.min(0.95, Math.max(0.05, 0.65 + (state.level - 1) * 0.03 - heatPenalty - bountyPen + protoSuccessMod + ghostAimBonus));
+  const ghostAimBonus   = (state.prestigePerks?.GHOST_AIM) ? 0.10 : 0;
+  const mapSuccessBonus = calculateMapModifiers(state).siphonSuccessBonus;
+  const successRate = Math.min(0.95, Math.max(0.05, 0.65 + (state.level - 1) * 0.03 - heatPenalty - bountyPen + protoSuccessMod + ghostAimBonus + mapSuccessBonus));
   const newStamina  = state.stamina - 15;
   const heatFail    = Math.round(12 * heatMult * protoHeatMult);
 
@@ -909,7 +1295,8 @@ export function mainframeHack(state) {
   const protoSuccessMod = proto.successRateMod ?? 0;
   const protoCreditMult = proto.creditMult  ?? 1;
   const protoXpMult     = proto.xpMult      ?? 1;
-  const successRate = Math.min(0.95, Math.max(0.05, 0.35 + (state.level - 1) * 0.03 - heatPenalty - bountyPen + protoSuccessMod));
+  const mapSuccessBonus = calculateMapModifiers(state).siphonSuccessBonus;
+  const successRate = Math.min(0.95, Math.max(0.05, 0.35 + (state.level - 1) * 0.03 - heatPenalty - bountyPen + protoSuccessMod + mapSuccessBonus));
   const newStamina  = state.stamina - 40;
   const heatFail    = Math.round(35 * heatMult * protoHeatMult);
 
@@ -1351,10 +1738,11 @@ export function tick(state) {
       s = { ...s, heat: Math.min(100, parseFloat((s.heat + 1.5).toFixed(2))) };
     }
   } else {
-    const distDecayBase = DISTRICTS[s.district]?.heatDecayBase ?? 0.2;
-    const traceBonus    = (s.upgrades.traceEraser ?? 0) * 0.1;
-    const corpMoleMult  = (s.intelUpgrades?.corpMole ?? 0) >= 1 ? 2 : 1;
-    const heatDecay     = s.layLowActive ? 2 : (distDecayBase + traceBonus) * corpMoleMult;
+    const distDecayBase  = DISTRICTS[s.district]?.heatDecayBase ?? 0.2;
+    const traceBonus     = (s.upgrades.traceEraser ?? 0) * 0.1;
+    const corpMoleMult   = (s.intelUpgrades?.corpMole ?? 0) >= 1 ? 2 : 1;
+    const mapHeatBonus   = calculateMapModifiers(s).heatDecayBonus;
+    const heatDecay      = s.layLowActive ? 2 : (distDecayBase + traceBonus + mapHeatBonus) * corpMoleMult;
     s = { ...s, heat: Math.max(0, parseFloat((s.heat - heatDecay).toFixed(2))) };
   }
 
@@ -1435,6 +1823,13 @@ export function tick(state) {
   s = runnerTick(s, 'fixer',        150, adjCycle(RUNNER_FX_CYCLE), 1   * hwHeatMult);
   s = runnerTick(s, 'shadowBroker', 600, adjCycle(RUNNER_SB_CYCLE), 0);
 
+  // ── Map passive gold ──────────────────────────────────────────────────────
+  const mapPassiveGold = calculateMapModifiers(s).passiveGold;
+  if (mapPassiveGold > 0) {
+    const inc = applyIncome(s, mapPassiveGold);
+    s = { ...s, gold: inc.gold, totalGoldEarned: inc.totalGoldEarned, runGoldEarned: inc.runGoldEarned };
+  }
+
   if (s.upgrades.autoFencer >= 1) {
     const fencerCd    = (s.prestigePerks ?? {}).FAST_FENCE ? 15 : 30;
     const newAutoTick = (s.autoFencerTick ?? 0) + 1;
@@ -1492,7 +1887,8 @@ export function tick(state) {
   } else {
     const newTimer = (s.raidTimer ?? 0) - 1;
     if (newTimer <= 0) {
-      const goldLost = Math.floor(s.gold * 0.30);
+      const raidReduction = Math.min(0.25, calculateMapModifiers(s).raidPenaltyReduction);
+      const goldLost      = Math.floor(s.gold * Math.max(0.05, 0.30 - raidReduction));
       s = {
         ...s, raidActive: false, raidTimer: 0, nextRaidIn: randomRaidInterval(),
         gold: Math.max(0, s.gold - goldLost),
