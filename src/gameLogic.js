@@ -1,5 +1,8 @@
 // SHADOW_GUILD — Game Logic
 // Pure functions only. No React imports.
+// CITY_MAP, zone definitions, and EFFECTS are imported from CITY_MAP.js.
+
+import { CITY_MAP as AETHERIA_MAP, DISTRICTS as AETHERIA_DISTRICTS } from '../CITY_MAP.js';
 
 // ── DEV MODE ─────────────────────────────────────────────────────────────────
 export const DEV_MODE = false;
@@ -161,9 +164,9 @@ export function isUnlocked(state, feature) {
     case 'siphon':     return true;
     case 'gold':       return true;
     case 'log':        return true;
+    case 'stamina':    return true;
     // Level 2
     case 'breach':     return lvl >= 2;
-    case 'stamina':    return lvl >= 2;
     case 'xp':         return lvl >= 2;
     // Level 3
     case 'upgrades_tab': return lvl >= 3;
@@ -226,335 +229,26 @@ const RUNNER_LABELS = {
 
 // ── DISTRICTS ─────────────────────────────────────────────────────────────────
 
+// ── ZONE PROPERTIES ───────────────────────────────────────────────────────────
+// Maps CITY_MAP.js zone IDs (Z1-Z7) to game-mechanical properties.
+// state.district is now one of these keys.
+
 export const DISTRICTS = {
-  neon_strip:   { label: 'NEON_STRIP',   lootMult: 1.0, heatDecayBase: 0.2,  unlockLevel: 1, requiresPrestige: 0, mapX: 50, mapY: 80 },
-  corp_zone:    { label: 'CORP_ZONE',    lootMult: 1.5, heatDecayBase: 0.16, unlockLevel: 5, requiresPrestige: 0, mapX: 22, mapY: 44 },
-  apex_citadel: { label: 'APEX_CITADEL', lootMult: 2.5, heatDecayBase: 0.1,  unlockLevel: 8, requiresPrestige: 0, mapX: 78, mapY: 42 },
-  dark_net:     { label: 'DARK_NET',     lootMult: 3.5, heatDecayBase: 0.4,  unlockLevel: 8, requiresPrestige: 1, mapX: 50, mapY: 13 },
+	Z1: { id: 'Z1', name: 'NEON_CORE',      color: '#ffc174', desc: 'High tech, high risk. Heart of Aetheria.', lootMultiplier: 4.0, heatDecayBase: 0.1 },
+	Z2: { id: 'Z2', name: 'INDUSTRIAL_WASTES', color: '#ff6b35', desc: 'Raw resources. Gold focus. Toxic.', lootMultiplier: 2.0, heatDecayBase: 0.2 },
+	Z3: { id: 'Z3', name: 'EASTERN_TECH',      color: '#00d4ff', desc: 'Encryption and security complexes.', lootMultiplier: 2.5, heatDecayBase: 0.15 },
+	Z4: { id: 'Z4', name: 'WESTERN_SLUMS',     color: '#b347ff', desc: 'Stealth and black market networks.', lootMultiplier: 1.0, heatDecayBase: 0.3 },
+	Z5: { id: 'Z5', name: 'CORP_CITADEL',      color: '#ff2244', desc: 'Endgame zone. GID controlled.', lootMultiplier: 8.0, heatDecayBase: 0.05 },
+	Z6: { id: 'Z6', name: 'THE_UNDERBELLY',    color: '#22ff88', desc: 'Hidden. Accessed via Subway Nexus.', lootMultiplier: 3.0, heatDecayBase: 0.4 },
+	Z7: { id: 'Z7', name: 'BUFFER_DISTRICTS',  color: '#888899', desc: 'Transition zones. Contested.', lootMultiplier: 1.5, heatDecayBase: 0.2 },
 };
 
-// ── CITY ZONES ────────────────────────────────────────────────────────────────
+// ── CANONICAL HEX MAP (from CITY_MAP.js) ──────────────────────────────────────
+// CITY_MAP  — full 28-hex Aetheria grid  (id, q, r, connections, effectHooks…)
+// CITY_ZONES — zone palette + metadata  (Z1-Z7 colors and descriptions)
 
-export const CITY_ZONES = {
-	Z1: { label: 'SILENT SLUMS',   riskLevel: 1, theme: 'Start zone'        },
-	Z2: { label: 'IRON WORKS',     riskLevel: 2, theme: 'Industrial'         },
-	Z3: { label: 'NEON GARDENS',   riskLevel: 2, theme: 'Social/Reputation'  },
-	Z4: { label: 'SILICON VALLEY', riskLevel: 3, theme: 'Tech/XP'            },
-	Z5: { label: 'FINANCIAL HUB',  riskLevel: 3, theme: 'High Gold'          },
-	Z6: { label: 'THE CITADEL',    riskLevel: 5, theme: 'Gov / GID HQ'       },
-	Z7: { label: 'THE UNDERBELLY', riskLevel: 4, theme: 'Deep Web'           },
-};
-
-// ── CITY MAP ──────────────────────────────────────────────────────────────────
-// 30 POI nodes (H00–H29) + 11 EMPTY_BLOCK buffers (E00–E10) = 41 hexes.
-// Coordinate space: 900 × 1000.  Connections define the Lattice System.
-// H00 is PLAYER-owned at start.  Zone 7 is reachable only via H25 → E10.
-
-export const CITY_MAP = {
-
-	// ── ZONE 1: SILENT SLUMS ─────────────────────────────────────────────────
-	H00: {
-		id: 'H00', label: 'QUANTUM_RELAY',    type: 'POI',        zoneId: 'Z1', icon: '[▲]',
-		coords: { x: 200, y: 800 },
-		connections: ['H01','H02','H03'],
-		captureStatus: 'OWNED', faction: 'PLAYER',
-		effectHooks: { heatDecayBonus: 0.05 },
-	},
-	H01: {
-		id: 'H01', label: 'BACKUP_NODE',       type: 'POI',        zoneId: 'Z1', icon: '[▲]',
-		coords: { x: 280, y: 760 },
-		connections: ['H00','H03','E00','H25'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { bustThresholdBonus: 10 },
-	},
-	H02: {
-		id: 'H02', label: 'ABANDONED_SECTOR',  type: 'POI',        zoneId: 'Z1', icon: '[⬡]',
-		coords: { x: 120, y: 760 },
-		connections: ['H00','H03'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { heatDecayBonus: 0.03 },
-	},
-	H03: {
-		id: 'H03', label: 'ROOFTOP_NETWORK',   type: 'POI',        zoneId: 'Z1', icon: '[⬡]',
-		coords: { x: 200, y: 720 },
-		connections: ['H00','H01','H02','E01'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { goldMult: 1.03 },
-	},
-	H25: {
-		id: 'H25', label: 'SUBWAY_NEXUS',      type: 'POI',        zoneId: 'Z1', icon: '[⬡]',
-		coords: { x: 320, y: 800 },
-		connections: ['H01','E00','E10'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: {},
-	},
-	E00: {
-		id: 'E00', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z1', icon: '[□]',
-		coords: { x: 280, y: 840 },
-		connections: ['H01','H25','E02'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: {},
-	},
-
-	// ── ZONE 2: IRON WORKS ───────────────────────────────────────────────────
-	E01: {
-		id: 'E01', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z2', icon: '[□]',
-		coords: { x: 160, y: 640 },
-		connections: ['H03','H04','H05'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: {},
-	},
-	H04: {
-		id: 'H04', label: 'GRID_OVERLOADER',   type: 'POI',        zoneId: 'Z2', icon: '[▲]',
-		coords: { x: 80, y: 580 },
-		connections: ['E01','H05','H06'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: {},
-	},
-	H05: {
-		id: 'H05', label: 'DRONE_NEST',        type: 'POI',        zoneId: 'Z2', icon: '[✕]',
-		coords: { x: 180, y: 560 },
-		connections: ['E01','H04','H07'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { raidPenaltyReduction: 0.10 },
-	},
-	H06: {
-		id: 'H06', label: 'TRAP_GRID',         type: 'POI',        zoneId: 'Z2', icon: '[✕]',
-		coords: { x: 80, y: 500 },
-		connections: ['H04','H07'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: {},
-	},
-	H07: {
-		id: 'H07', label: 'CRYPTO_MINE',       type: 'POI',        zoneId: 'Z2', icon: '[◎]',
-		coords: { x: 180, y: 460 },
-		connections: ['H05','H06','E04'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { passiveGold: 3 },
-	},
-
-	// ── ZONE 3: NEON GARDENS ─────────────────────────────────────────────────
-	E02: {
-		id: 'E02', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z3', icon: '[□]',
-		coords: { x: 440, y: 800 },
-		connections: ['E00','H08','H09'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: {},
-	},
-	H08: {
-		id: 'H08', label: 'AD_EXCHANGE_CORE',  type: 'POI',        zoneId: 'Z3', icon: '[◎]',
-		coords: { x: 540, y: 800 },
-		connections: ['E02','H09','H10'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { goldMult: 1.06 },
-	},
-	H09: {
-		id: 'H09', label: 'IDENTITY_FORGE',    type: 'POI',        zoneId: 'Z3', icon: '[◈]',
-		coords: { x: 620, y: 760 },
-		connections: ['E02','H08','H10','H11','E03'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { siphonSuccessBonus: 0.05 },
-	},
-	H10: {
-		id: 'H10', label: 'DEEPFAKE_STUDIO',   type: 'POI',        zoneId: 'Z3', icon: '[◈]',
-		coords: { x: 540, y: 720 },
-		connections: ['H08','H09'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { heatDecayBonus: 0.05 },
-	},
-	H11: {
-		id: 'H11', label: 'SCANNER_DOME',      type: 'POI',        zoneId: 'Z3', icon: '[⬡]',
-		coords: { x: 700, y: 800 },
-		connections: ['H09'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: {},
-	},
-
-	// ── ZONE 4: SILICON VALLEY ───────────────────────────────────────────────
-	E03: {
-		id: 'E03', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z4', icon: '[□]',
-		coords: { x: 640, y: 640 },
-		connections: ['H09','H12','H14'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: {},
-	},
-	H12: {
-		id: 'H12', label: 'UPLINK_TOWER',      type: 'POI',        zoneId: 'Z4', icon: '[▲]',
-		coords: { x: 740, y: 580 },
-		connections: ['E03','H13','H14'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { goldMult: 1.05 },
-	},
-	H13: {
-		id: 'H13', label: 'SIGNAL_SCRAMBLER',  type: 'POI',        zoneId: 'Z4', icon: '[▲]',
-		coords: { x: 820, y: 540 },
-		connections: ['H12','H14','H15'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { siphonSuccessBonus: 0.05 },
-	},
-	H14: {
-		id: 'H14', label: 'DATA_HARBOR',       type: 'POI',        zoneId: 'Z4', icon: '[◎]',
-		coords: { x: 740, y: 500 },
-		connections: ['E03','H12','H13','H15','H16'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { passiveGold: 5 },
-	},
-	H15: {
-		id: 'H15', label: 'GHOST_LAB',         type: 'POI',        zoneId: 'Z4', icon: '[◈]',
-		coords: { x: 820, y: 460 },
-		connections: ['H13','H14'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { heatDecayBonus: 0.08 },
-	},
-	H16: {
-		id: 'H16', label: 'EMP_ARRAY',         type: 'POI',        zoneId: 'Z4', icon: '[✕]',
-		coords: { x: 740, y: 420 },
-		connections: ['H14','E06','E08'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { bustThresholdBonus: 10 },
-	},
-
-	// ── ZONE 5: FINANCIAL HUB ────────────────────────────────────────────────
-	E04: {
-		id: 'E04', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z5', icon: '[□]',
-		coords: { x: 200, y: 400 },
-		connections: ['H07','H19','E05'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: {},
-	},
-	E05: {
-		id: 'E05', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z5', icon: '[□]',
-		coords: { x: 360, y: 420 },
-		connections: ['E04','H20','E06'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: {},
-	},
-	E06: {
-		id: 'E06', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z5', icon: '[□]',
-		coords: { x: 580, y: 400 },
-		connections: ['H16','H20','E05'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: {},
-	},
-	H17: {
-		id: 'H17', label: 'BLACK_VAULT',       type: 'POI',        zoneId: 'Z5', icon: '[◎]',
-		coords: { x: 300, y: 300 },
-		connections: ['H19','H18'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { passiveGold: 8 },
-	},
-	H18: {
-		id: 'H18', label: 'DARK_AUCTION_HOUSE', type: 'POI',       zoneId: 'Z5', icon: '[◎]',
-		coords: { x: 420, y: 260 },
-		connections: ['H17','H20','E07'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { goldMult: 1.10 },
-	},
-	H19: {
-		id: 'H19', label: 'HEAT_SINK_FACILITY', type: 'POI',       zoneId: 'Z5', icon: '[◈]',
-		coords: { x: 220, y: 300 },
-		connections: ['E04','H17','H20'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { heatDecayBonus: 0.12 },
-	},
-	H20: {
-		id: 'H20', label: 'FIREWALL_FORTRESS', type: 'POI',        zoneId: 'Z5', icon: '[✕]',
-		coords: { x: 380, y: 360 },
-		connections: ['H18','H19','E05'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { bustThresholdBonus: 15 },
-	},
-
-	// ── ZONE 6: THE CITADEL ──────────────────────────────────────────────────
-	// Two entry routes: Z5 → E07 → H21  and  Z4 → E08 → H24
-	E07: {
-		id: 'E07', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z6', icon: '[□]',
-		coords: { x: 540, y: 240 },
-		connections: ['H18','H21'],
-		captureStatus: 'LOCKED', faction: 'GID',
-		effectHooks: {},
-	},
-	E08: {
-		id: 'E08', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z6', icon: '[□]',
-		coords: { x: 740, y: 340 },
-		connections: ['H16','H24'],
-		captureStatus: 'LOCKED', faction: 'GID',
-		effectHooks: {},
-	},
-	H21: {
-		id: 'H21', label: 'CORPORATE_HQ',      type: 'POI',        zoneId: 'Z6', icon: '[⚠]',
-		coords: { x: 660, y: 200 },
-		connections: ['E07','H22','H23','H24'],
-		captureStatus: 'LOCKED', faction: 'GID',
-		effectHooks: { goldMult: 1.08 },
-	},
-	H22: {
-		id: 'H22', label: 'HUNTER_KILLER_LAB', type: 'POI',        zoneId: 'Z6', icon: '[✕]',
-		coords: { x: 760, y: 160 },
-		connections: ['H21','H23'],
-		captureStatus: 'LOCKED', faction: 'OMNIGUARD',
-		effectHooks: {},
-	},
-	H23: {
-		id: 'H23', label: 'ORBITAL_UPLINK',    type: 'POI',        zoneId: 'Z6', icon: '[⚠]',
-		coords: { x: 640, y: 120 },
-		connections: ['H21','H22'],
-		captureStatus: 'LOCKED', faction: 'GID',
-		effectHooks: { passiveGold: 12 },
-	},
-	H24: {
-		id: 'H24', label: 'TIME_LOCK_SERVER',  type: 'POI',        zoneId: 'Z6', icon: '[⚠]',
-		coords: { x: 760, y: 280 },
-		connections: ['H21','E08'],
-		captureStatus: 'LOCKED', faction: 'GID',
-		effectHooks: { goldMult: 1.12 },
-	},
-
-	// ── ZONE 7: THE UNDERBELLY ───────────────────────────────────────────────
-	// Entry: only via H25 (SUBWAY_NEXUS) → E10.  No other path in.
-	E10: {
-		id: 'E10', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z7', icon: '[□]',
-		coords: { x: 300, y: 880 },
-		connections: ['H25','H26','H27'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: {},
-	},
-	E09: {
-		id: 'E09', label: 'EMPTY_BLOCK',       type: 'EMPTY_BLOCK', zoneId: 'Z7', icon: '[□]',
-		coords: { x: 460, y: 960 },
-		connections: ['H26','H27','H28','H29'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: {},
-	},
-	H26: {
-		id: 'H26', label: 'BLACK_ICE_LAB',     type: 'POI',        zoneId: 'Z7', icon: '[⚠]',
-		coords: { x: 380, y: 920 },
-		connections: ['E10','E09','H28'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { siphonSuccessBonus: 0.10 },
-	},
-	H27: {
-		id: 'H27', label: 'AI_CORE_FRAGMENT',  type: 'POI',        zoneId: 'Z7', icon: '[⚠]',
-		coords: { x: 300, y: 960 },
-		connections: ['E10','E09','H29'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { goldMult: 1.15 },
-	},
-	H28: {
-		id: 'H28', label: 'SURVEILLANCE_HIJACK_HUB', type: 'POI', zoneId: 'Z7', icon: '[◈]',
-		coords: { x: 480, y: 900 },
-		connections: ['H26','E09'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: { heatDecayBonus: 0.10 },
-	},
-	H29: {
-		id: 'H29', label: 'ANOMALY_SITE',      type: 'POI',        zoneId: 'Z7', icon: '[⬡]',
-		coords: { x: 400, y: 980 },
-		connections: ['H27','E09'],
-		captureStatus: 'LOCKED', faction: 'NEUTRAL',
-		effectHooks: {},
-	},
-};
+export const CITY_MAP   = AETHERIA_MAP;
+export const CITY_ZONES = AETHERIA_DISTRICTS;
 
 // ── MAP LOGIC ─────────────────────────────────────────────────────────────────
 
@@ -571,9 +265,10 @@ export function canCapture(state, hexId) {
 export function captureHex(state, hexId) {
 	if (!canCapture(state, hexId)) return state;
 	const hex        = CITY_MAP[hexId];
-	const captured   = [...(state.capturedHexes ?? ['H00']), hexId];
+	const zoneName   = CITY_ZONES[hex.districtId]?.name ?? hex.districtId;
+	const captured   = [...(state.capturedHexes ?? []), hexId];
 	const discovered = [...new Set([
-		...(state.mapDiscovery ?? ['H00']),
+		...(state.mapDiscovery ?? []),
 		hexId,
 		...hex.connections.filter(id => CITY_MAP[id]),
 	])];
@@ -581,14 +276,15 @@ export function captureHex(state, hexId) {
 		...state,
 		capturedHexes: captured,
 		mapDiscovery:  discovered,
-		log: addLog(state.log, `:: NODE_CAPTURED :: ${hex.label} :: ${CITY_ZONES[hex.zoneId]?.label ?? hex.zoneId}`),
+		log: addLog(state.log, `:: NODE_CAPTURED :: ${hex.label} :: ${zoneName}`),
 	};
 }
 
-// Aggregates all passive modifiers from currently owned POI hexes.
-// goldMult is compound-multiplicative; all others are additive sums.
+// Aggregates all passive modifiers from currently owned hex effectHooks.
+// effectHooks is an array of { type, value } objects (CITY_MAP.js format).
+// goldMult / runner_speed are compound-multiplicative; all others additive.
 export function calculateMapModifiers(state) {
-	const owned  = state.capturedHexes ?? ['H00'];
+	const owned  = state.capturedHexes ?? [];
 	const result = {
 		heatDecayBonus:       0,
 		goldMult:             1,
@@ -596,24 +292,95 @@ export function calculateMapModifiers(state) {
 		siphonSuccessBonus:   0,
 		bustThresholdBonus:   0,
 		raidPenaltyReduction: 0,
+		staminaRegen:         0,
+		xpBoost:              0,
+		runnerSpeedMult:      1,
+		critChanceBonus:      0,
+		repBoost:             0,
 	};
 	for (const id of owned) {
 		const hex = CITY_MAP[id];
-		if (!hex || hex.type === 'EMPTY_BLOCK') continue;
-		const h = hex.effectHooks;
-		if (h.heatDecayBonus)        result.heatDecayBonus        += h.heatDecayBonus;
-		if (h.goldMult)              result.goldMult              *= h.goldMult;
-		if (h.passiveGold)           result.passiveGold           += h.passiveGold;
-		if (h.siphonSuccessBonus)    result.siphonSuccessBonus    += h.siphonSuccessBonus;
-		if (h.bustThresholdBonus)    result.bustThresholdBonus    += h.bustThresholdBonus;
-		if (h.raidPenaltyReduction)  result.raidPenaltyReduction  += h.raidPenaltyReduction;
+		if (!hex || hex.type === 'empty_block') continue;
+		const hooks = Array.isArray(hex.effectHooks) ? hex.effectHooks : [];
+		for (const h of hooks) {
+			if (!h || h.type === 'none') continue;
+			switch (h.type) {
+				case 'heat_decay':      result.heatDecayBonus       += h.value; break;
+				case 'gold_mult':       result.goldMult             *= (1 + h.value); break;
+				case 'siphon_rate':     result.siphonSuccessBonus   += h.value; break;
+				case 'bust_threshold':  result.bustThresholdBonus   += h.value; break;
+				case 'stamina_regen':   result.staminaRegen         += h.value; break;
+				case 'xp_boost':        result.xpBoost              += h.value; break;
+				case 'runner_speed':    result.runnerSpeedMult      *= (1 + h.value); break;
+				case 'crit_chance':     result.critChanceBonus      += h.value; break;
+				case 'rep_boost':       result.repBoost             += h.value; break;
+				// passiveGold / raidPenaltyReduction — no direct CITY_MAP.js type
+				default: break;
+			}
+		}
 	}
 	return result;
 }
 
-// Returns the initial mapDiscovery array: H00 + its immediate neighbors.
+// Returns the initial mapDiscovery: starting hex + its immediate neighbors.
 export function getInitialDiscovery() {
-	return ['H00', ...(CITY_MAP['H00']?.connections ?? [])];
+	const start = 'western_warpgate';
+	// Filter: Na začiatku uvidíš len susedov, ktorí sú v rovnakom distrikte (Z4)
+	const neighbors = (CITY_MAP[start]?.connections ?? [])
+		.filter(connId => CITY_MAP[connId]?.districtId === 'Z4');
+	
+	return [start, ...neighbors];
+}
+// Returns a flat array ready for rendering — pixel coords, owner color, status.
+// HEX_SIZE is the pointy-top flat radius in SVG units.
+export function getMapDataForVis(state, HEX_SIZE = 24) {
+	const sqrt3    = Math.sqrt(3);
+	const captured = new Set(state.capturedHexes ?? []);
+	const district = state.district;
+
+	// Zone color palette mirrors CITY_MAP.js DISTRICTS colors
+	const zoneColor = {
+		Z1: '#ffc174',
+		Z2: '#ff6b35',
+		Z3: '#00d4ff',
+		Z4: '#b347ff',
+		Z5: '#ff2244',
+		Z6: '#22ff88',
+		Z7: '#888899',
+	};
+
+	return Object.values(CITY_MAP).map(hex => {
+		// Axial → pixel (flat-top orientation)
+		const px = HEX_SIZE * (sqrt3 * hex.q + (sqrt3 / 2) * hex.r);
+		const py = HEX_SIZE * (1.5 * hex.r);
+
+		const isOwned  = captured.has(hex.id);
+		const isActive = hex.districtId === district;
+		const faction  = hex.faction;
+
+		let ownerColor;
+		if (isOwned)            ownerColor = 'var(--amber)';
+		else if (faction === 'GID' || faction === 'OMNIGUARD') ownerColor = '#ef4444';
+		else if (faction === 'ZERO')                           ownerColor = '#22ff88';
+		else                    ownerColor = zoneColor[hex.districtId] ?? '#444';
+
+		return {
+			id:          hex.id,
+			label:       hex.label,
+			icon:        hex.icon,
+			type:        hex.type,
+			districtId:  hex.districtId,
+			faction:     faction ?? 'NEUTRAL',
+			q:           hex.q,
+			r:           hex.r,
+			px, py,
+			isOwned,
+			isActive,
+			ownerColor,
+			captureTime: hex.captureTime,
+			lootMult:    hex.lootMultiplier ?? 1,
+		};
+	});
 }
 
 // ── UPGRADE DEFINITIONS ───────────────────────────────────────────────────────
@@ -626,7 +393,7 @@ export const UPGRADE_DEFS = [
   { key: 'traceEraser',    label: 'TRACE_ERASER',    baseCost: 150, max: 6,  effect: 'Heat decay +0.1/s / lvl'       },
   { key: 'iceBreaker',     label: 'ICE_BREAKER',     baseCost: 350, max: 5,  effect: 'Bust lockout -1s / lvl'        },
   { key: 'darkChannel',    label: 'DARK_CHANNEL',    baseCost: 200, max: 8,  effect: 'Item cooldown -30s / lvl'      },
-  { key: 'voidDrive', label: 'VOID_DRIVE', baseCost: 500, max: 6, effect: 'Inventory +5 slots / lvl' },
+  { key: 'voidDrive', label: 'VOID_DRIVE', baseCost: 500, max: 10, effect: 'Inventory +2 slots / lvl' },
   { key: 'proxyServers',     label: 'PROXY_SERVERS',     baseCost: 400, max: 5, effect: 'Bust threshold +10 / lvl (default 100)' },
   { key: 'quantumEncryption',label: 'QUANTUM_ENCRYPTION',baseCost: 800, max: 1, effect: 'On BUSTED: save 20% of inventory'        },
   { key: 'safehouse',      label: 'SAFEHOUSE_NETWORK',  baseCost: 1500, max: 6, effect: 'Offline cap +2 hours / lvl' },
@@ -892,7 +659,7 @@ function addActionLog(state, type, { item = null, xp = 0, heat = 0, critical = f
 
 function getMaxInventory(upgrades) {
   // Základ je 20 slotov. Každý lvl VOID_DRIVE pridá 5 ďalších.
-  return 20 + (upgrades.voidDrive ?? 0) * 5; 
+  return 12 + (upgrades.voidDrive ?? 0) * 2; 
 }
 
 function makeItem(template, districtMult = 1, upgrades = {}, intelUpgrades = {}) {
@@ -1588,7 +1355,7 @@ export function prestige(state) {
     dailyFeedback:      null,
     lastTickTime:       Date.now(),
     runGoldEarned:       0,
-    district:            'neon_strip',
+    district:            'Z4',
     siphonsWithoutBust:  0,
     everBustedThisRun:   false,
     achievementFeedback: null,
@@ -1706,261 +1473,393 @@ export function importSave(encoded) {
 // ── GAME TICK (1s interval) ───────────────────────────────────────────────────
 
 export function tick(state) {
-  let s = state;
-
-  // ── Log batch expiry (3s) ─────────────────────────────────────────────────
+  let next = { ...state };
   const nowMs = Date.now();
-  if ((s.logBatch ?? null) && (nowMs - s.logBatch.ts) > 3000) s = { ...s, logBatch: null };
 
-  // ── Daily challenge reset (86400 real seconds) ────────────────────────────
-  const dc = s.dailyChallenge;
+  // ── 1. MISIE / CHECK COMPLETED INFILTRATIONS ─────────────────────
+  next = checkMissions(next);
+
+  // ── 2. LOG BATCH EXPIRY (3 sekundy) ────────────────────────────────
+  if ((next.logBatch ?? null) && (nowMs - next.logBatch.ts) > 3000) {
+    next = { ...next, logBatch: null };
+  }
+
+  // ── 3. DAILY CHALLENGE RESET (každých 24h) ─────────────────────────
+  const dc = next.dailyChallenge;
   if (!dc || !dc.type || (nowMs - (dc.lastReset ?? 0)) >= 86400000) {
-    s = { ...s, dailyChallenge: pickNewChallenge(nowMs) };
+    next = { ...next, dailyChallenge: pickNewChallenge(nowMs) };
   }
 
-  const effectiveMaxStamina  = 100 + (s.upgrades.neuralBoost ?? 0) * 10;
-  const baseRegen            = 2 + (s.upgrades.stimPack ?? 0) * 0.5;
-  const protoStaminaMult     = PROTOCOL_DEFS[s.activeProtocol ?? 'NONE']?.staminaRegenMult ?? 1;
-  const effectiveRegen       = (s.layLowActive ? baseRegen + 2 : baseRegen) * protoStaminaMult;
-  s = { ...s, stamina: Math.min(effectiveMaxStamina, s.stamina + effectiveRegen) };
+  // ── STAMINA REGEN + PROTOCOL MULTIPLIER ────────────────────────────
+  const effectiveMaxStamina = 100 + (next.upgrades.neuralBoost ?? 0) * 10;
+  const baseRegen = 2 + (next.upgrades.stimPack ?? 0) * 0.5;
+  const protoStaminaMult = PROTOCOL_DEFS[next.activeProtocol ?? 'NONE']?.staminaRegenMult ?? 1;
+  const effectiveRegen = (next.layLowActive ? baseRegen + 2 : baseRegen) * protoStaminaMult;
 
-  if (s.bustedLockout > 0) {
-    return { ...s, bustedLockout: s.bustedLockout - 1, lastTickTime: nowMs };
+  next = {
+    ...next,
+    stamina: Math.min(effectiveMaxStamina, next.stamina + effectiveRegen)
+  };
+
+  // ── BUSTED LOCKOUT ─────────────────────────────────────────────────
+  if (next.bustedLockout > 0) {
+    return { ...next, bustedLockout: next.bustedLockout - 1, lastTickTime: nowMs };
   }
 
-  // ── Heat decay (ACTIVE TRACE) ────────
-  if ((s.heatSpikeTimer ?? 0) > 0) {
-    s = { ...s, heatSpikeTimer: s.heatSpikeTimer - 1 };
-    if (s.layLowActive) {
-      s = { ...s, heat: Math.max(0, parseFloat((s.heat - 2).toFixed(2))) };
+  // ── HEAT MANAGEMENT ────────────────────────────────────────────────
+  if ((next.heatSpikeTimer ?? 0) > 0) {
+    next = { ...next, heatSpikeTimer: next.heatSpikeTimer - 1 };
+    if (next.layLowActive) {
+      next = { ...next, heat: Math.max(0, parseFloat((next.heat - 2).toFixed(2))) };
     } else {
-      // ACTIVE TRACE: Heat actively goes UP by 1.5 per second!
-      s = { ...s, heat: Math.min(100, parseFloat((s.heat + 1.5).toFixed(2))) };
+      next = { ...next, heat: Math.min(100, parseFloat((next.heat + 1.5).toFixed(2))) };
     }
   } else {
-    const distDecayBase  = DISTRICTS[s.district]?.heatDecayBase ?? 0.2;
-    const traceBonus     = (s.upgrades.traceEraser ?? 0) * 0.1;
-    const corpMoleMult   = (s.intelUpgrades?.corpMole ?? 0) >= 1 ? 2 : 1;
-    const mapHeatBonus   = calculateMapModifiers(s).heatDecayBonus;
-    const heatDecay      = s.layLowActive ? 2 : (distDecayBase + traceBonus + mapHeatBonus) * corpMoleMult;
-    s = { ...s, heat: Math.max(0, parseFloat((s.heat - heatDecay).toFixed(2))) };
+    const distDecayBase = DISTRICTS[next.district]?.heatDecayBase ?? 0.2;
+    const traceBonus = (next.upgrades.traceEraser ?? 0) * 0.1;
+    const corpMoleMult = (next.intelUpgrades?.corpMole ?? 0) >= 1 ? 2 : 1;
+    const mapHeatBonus = calculateMapModifiers(next).heatDecayBonus ?? 0;
+    const heatDecay = next.layLowActive
+      ? 2
+      : (distDecayBase + traceBonus + mapHeatBonus) * corpMoleMult;
+
+    next = { ...next, heat: Math.max(0, parseFloat((next.heat - heatDecay).toFixed(2))) };
   }
 
-  // ── SURVIVE_HEAT daily challenge ──────────────────────────────────────────
-  if (s.heat >= 80) s = updateDailyChallenge(s, 'SURVIVE_HEAT', s.heat);
-
-  // ── Bounty system ─────────────────────────────────────────────────────────
-  if (!(s.bountyActive ?? false) && s.heat >= 80) {
-    s = { ...s, bountyActive: true,
-          log: addLog(s.log, ':: BOUNTY ISSUED :: Aether-Biotech has flagged your signature') };
-    s = addZero(s, 'bounty');
-  } else if ((s.bountyActive ?? false) && s.heat < 40) {
-    s = { ...s, bountyActive: false,
-          log: addLog(s.log, ':: BOUNTY CLEARED :: signature lost') };
+  // ── DAILY CHALLENGE: SURVIVE_HEAT ──────────────────────────────────
+  if (next.heat >= 80) {
+    next = updateDailyChallenge(next, 'SURVIVE_HEAT', next.heat);
   }
 
-  // Item cooldowns: 2x faster during lay_low
-  const cdTick = s.layLowActive ? 2 : 1;
-  s = {
-    ...s,
-    inventory: s.inventory.map(item => {
+  // ── BOUNTY SYSTEM ──────────────────────────────────────────────────
+  if (!(next.bountyActive ?? false) && next.heat >= 80) {
+    next = {
+      ...next,
+      bountyActive: true,
+      log: addLog(next.log, ':: BOUNTY ISSUED :: Aether-Biotech has flagged your signature')
+    };
+    next = addZero(next, 'bounty');
+  } else if ((next.bountyActive ?? false) && next.heat < 40) {
+    next = {
+      ...next,
+      bountyActive: false,
+      log: addLog(next.log, ':: BOUNTY CLEARED :: signature lost')
+    };
+  }
+
+  // ── ITEM COOLDOWNS (2x rýchlejšie pri LAY LOW) ─────────────────────
+  const cdTick = next.layLowActive ? 2 : 1;
+  next = {
+    ...next,
+    inventory: next.inventory.map(item => {
       if (!item.isHot) return item;
       const rem = item.cooldownRemaining - cdTick;
       return { ...item, cooldownRemaining: Math.max(0, rem), isHot: rem > 0 };
-    }),
+    })
   };
 
+  // ── DEFINÍCIA runnerTick FUNKCIE ───────────────────────────────────
   function runnerTick(cur, runnerKey, crPerCycle, cycle, heatPerCycle) {
-		const count   = cur.runners[runnerKey] ?? 0;
-		const newTick = (cur.runnerTick[runnerKey] ?? 0) + 1;
-		if (count === 0) return { ...cur, runnerTick: { ...cur.runnerTick, [runnerKey]: newTick } };
-		if (newTick < cycle) return { ...cur, runnerTick: { ...cur.runnerTick, [runnerKey]: newTick } };
-		const spec         = (cur.runnerSpec ?? {})[runnerKey];
-		const synergyMult  = count >= 5 ? 1.20 : 1;
-		const guildMult    = (cur.prestigePerks ?? {}).GUILD_MASTER ? 1.25 : 1;
-		const specGoldMult = spec === 'GREEDY' ? 1.5 : 1;
-		const specHeatMult = spec === 'SHADOW' ? 0.5 : 1;
-		const income = applyIncome(cur, count * crPerCycle * synergyMult * guildMult * specGoldMult);
-		const stealthMult = 1 - (cur.upgrades?.runnerStealth ?? 0) * 0.25;
-		const heat = DEV_MODE ? 0 : count * heatPerCycle * specHeatMult * stealthMult;
-		let next = {
-			...cur,
-			gold:            income.gold,
-			totalGoldEarned: income.totalGoldEarned,
-			runGoldEarned:   income.runGoldEarned,
-			heat:            Math.min(100, cur.heat + heat),
-			runnerTick:      { ...cur.runnerTick, [runnerKey]: 0 },
-			log: addLog(cur.log, `:: ${runnerKey.toUpperCase().replace('RUNNER','_RUNNER').replace('BROKER','_BROKER')} x${count} :: +${income._earned.toLocaleString()} CR${heat > 0 ? ` :: HEAT +${heat}` : ''}${spec && spec !== 'PENDING' ? ` [${spec}]` : ''}`),
-		};
-		if (!DEV_MODE) next = applyBustedCheck(next);
-		// Runner XP: +1 per cycle fire (capped at 100)
-		const prevXp = (cur.runnerXp ?? {})[runnerKey] ?? 0;
-		if (prevXp < 100) {
-			const newXp = prevXp + 1;
-			if (newXp >= 100 && !((cur.runnerSpec ?? {})[runnerKey])) {
-				next = {
-					...next,
-					runnerXp:   { ...(next.runnerXp ?? {}), [runnerKey]: 100 },
-					runnerSpec: { ...(next.runnerSpec ?? {}), [runnerKey]: 'PENDING' },
-					log: addLog(next.log, `:: RUNNER LVL UP :: ${RUNNER_LABELS[runnerKey] ?? runnerKey.toUpperCase()} :: SPECIALIZATION AVAILABLE`),
-				};
-			} else {
-				next = { ...next, runnerXp: { ...(next.runnerXp ?? {}), [runnerKey]: newXp } };
-			}
-		}
-		return next;
-	}
+    const count = cur.runners?.[runnerKey] ?? 0;
+    let newTick = (cur.runnerTick?.[runnerKey] ?? 0) + 1;
 
-  // HW_OVERCLOCK: each level cuts cycle by 15%, adds 50% heat per runner per cycle
-  const hwLvl       = s.upgrades.hwOverclock ?? 0;
-  const hwSpeedMult = Math.pow(0.85, hwLvl);   // e.g. lvl1 → 0.85x cycle time
-  const hwHeatMult  = 1 + hwLvl * 0.5;          // e.g. lvl1 → 1.5x heat
-  function adjCycle(base) { return Math.max(1, Math.round(base * hwSpeedMult)); }
+    if (count === 0 || newTick < cycle) {
+      return {
+        ...cur,
+        runnerTick: { ...(cur.runnerTick ?? {}), [runnerKey]: newTick }
+      };
+    }
 
-  s = runnerTick(s, 'streetRunner', 2,   adjCycle(RUNNER_SR_CYCLE), 1   * hwHeatMult);
-  s = runnerTick(s, 'dataThief',    8,   adjCycle(RUNNER_DT_CYCLE), 2   * hwHeatMult);
-  s = runnerTick(s, 'infiltrator',  35,  adjCycle(RUNNER_IF_CYCLE), 3   * hwHeatMult);
-  s = runnerTick(s, 'fixer',        150, adjCycle(RUNNER_FX_CYCLE), 1   * hwHeatMult);
-  s = runnerTick(s, 'shadowBroker', 600, adjCycle(RUNNER_SB_CYCLE), 0);
+    // Plná logika runnera (z tvojho pôvodného kódu)
+    const spec = (cur.runnerSpec ?? {})[runnerKey];
+    const synergyMult = count >= 5 ? 1.20 : 1;
+    const guildMult = (cur.prestigePerks ?? {}).GUILD_MASTER ? 1.25 : 1;
+    const specGoldMult = spec === 'GREEDY' ? 1.5 : 1;
+    const specHeatMult = spec === 'SHADOW' ? 0.5 : 1;
 
-  // ── Map passive gold ──────────────────────────────────────────────────────
-  const mapPassiveGold = calculateMapModifiers(s).passiveGold;
-  if (mapPassiveGold > 0) {
-    const inc = applyIncome(s, mapPassiveGold);
-    s = { ...s, gold: inc.gold, totalGoldEarned: inc.totalGoldEarned, runGoldEarned: inc.runGoldEarned };
-  }
+    const income = applyIncome(cur, count * crPerCycle * synergyMult * guildMult * specGoldMult);
+    const stealthMult = 1 - (cur.upgrades?.runnerStealth ?? 0) * 0.25;
+    const heat = DEV_MODE ? 0 : count * heatPerCycle * specHeatMult * stealthMult;
 
-  if (s.upgrades.autoFencer >= 1) {
-    const fencerCd    = (s.prestigePerks ?? {}).FAST_FENCE ? 15 : 30;
-    const newAutoTick = (s.autoFencerTick ?? 0) + 1;
-    if (newAutoTick >= fencerCd) {
-      const cold = s.inventory.filter(i => !i.isHot);
-      if (cold.length > 0) {
-        const income = applyIncome(s, cold.reduce((sum, i) => sum + i.gold, 0));
-        s = {
-          ...s,
-          gold:            income.gold,
-          totalGoldEarned: income.totalGoldEarned,
-          runGoldEarned:   income.runGoldEarned,
-          inventory:       s.inventory.filter(i => i.isHot),
-          autoFencerTick:  0,
-          log: addLog(s.log, `:: AUTO_FENCER :: SOLD ${cold.length} ITEM(S) :: +${income._earned.toLocaleString()} CR`),
+    let result = {
+      ...cur,
+      gold: income.gold,
+      totalGoldEarned: income.totalGoldEarned,
+      runGoldEarned: income.runGoldEarned,
+      heat: Math.min(100, cur.heat + heat),
+      runnerTick: { ...(cur.runnerTick ?? {}), [runnerKey]: 0 },
+      log: addLog(cur.log, `:: ${runnerKey.toUpperCase().replace('RUNNER','_RUNNER').replace('BROKER','_BROKER')} x${count} :: +${income._earned.toLocaleString()} CR${heat > 0 ? ` :: HEAT +${heat}` : ''}${spec && spec !== 'PENDING' ? ` [${spec}]` : ''}`),
+    };
+
+    if (!DEV_MODE) result = applyBustedCheck(result);
+
+    // Runner XP
+    const prevXp = (cur.runnerXp ?? {})[runnerKey] ?? 0;
+    if (prevXp < 100) {
+      const newXp = prevXp + 1;
+      if (newXp >= 100 && !((cur.runnerSpec ?? {})[runnerKey])) {
+        result = {
+          ...result,
+          runnerXp: { ...(result.runnerXp ?? {}), [runnerKey]: 100 },
+          runnerSpec: { ...(result.runnerSpec ?? {}), [runnerKey]: 'PENDING' },
+          log: addLog(result.log, `:: RUNNER LVL UP :: ${runnerKey.toUpperCase()} :: SPECIALIZATION AVAILABLE`),
         };
       } else {
-        s = { ...s, autoFencerTick: 0 };
+        result = { ...result, runnerXp: { ...(result.runnerXp ?? {}), [runnerKey]: newXp } };
+      }
+    }
+
+    return result;
+  }
+
+  // ── RUNNER TICK SYSTEM (s HW_OVERCLOCK) ───────────────────────────
+  const hwLvl = next.upgrades.hwOverclock ?? 0;
+  const hwSpeedMult = Math.pow(0.85, hwLvl);
+  const hwHeatMult = 1 + hwLvl * 0.5;
+
+  function adjCycle(base) {
+    return Math.max(1, Math.round(base * hwSpeedMult));
+  }
+
+  next = runnerTick(next, 'streetRunner', 2,   adjCycle(RUNNER_SR_CYCLE), 1 * hwHeatMult);
+  next = runnerTick(next, 'dataThief',    8,   adjCycle(RUNNER_DT_CYCLE), 2 * hwHeatMult);
+  next = runnerTick(next, 'infiltrator',  35,  adjCycle(RUNNER_IF_CYCLE), 3 * hwHeatMult);
+  next = runnerTick(next, 'fixer',        150, adjCycle(RUNNER_FX_CYCLE), 1 * hwHeatMult);
+  next = runnerTick(next, 'shadowBroker', 600, adjCycle(RUNNER_SB_CYCLE), 0);
+
+  // ── MAP PASSIVE GOLD ───────────────────────────────────────────────
+  const mapPassiveGold = calculateMapModifiers(next).passiveGold;
+  if (mapPassiveGold > 0) {
+    const inc = applyIncome(next, mapPassiveGold);
+    next = {
+      ...next,
+      gold: inc.gold,
+      totalGoldEarned: inc.totalGoldEarned,
+      runGoldEarned: inc.runGoldEarned
+    };
+  }
+
+  // ── AUTO FENCER ────────────────────────────────────────────────────
+  if (next.upgrades.autoFencer >= 1) {
+    const fencerCd = (next.prestigePerks ?? {}).FAST_FENCE ? 15 : 30;
+    const newAutoTick = (next.autoFencerTick ?? 0) + 1;
+
+    if (newAutoTick >= fencerCd) {
+      const cold = next.inventory.filter(i => !i.isHot);
+      if (cold.length > 0) {
+        const income = applyIncome(next, cold.reduce((sum, i) => sum + i.gold, 0));
+        next = {
+          ...next,
+          gold: income.gold,
+          totalGoldEarned: income.totalGoldEarned,
+          runGoldEarned: income.runGoldEarned,
+          inventory: next.inventory.filter(i => i.isHot),
+          autoFencerTick: 0,
+          log: addLog(next.log, `:: AUTO_FENCER :: SOLD ${cold.length} ITEM(S) :: +${income._earned.toLocaleString()} CR`)
+        };
+      } else {
+        next = { ...next, autoFencerTick: 0 };
       }
     } else {
-      s = { ...s, autoFencerTick: newAutoTick };
+      next = { ...next, autoFencerTick: newAutoTick };
     }
   }
 
-  if (s.darkMarketCooldown > 0) s = { ...s, darkMarketCooldown: s.darkMarketCooldown - 1 };
-  if ((s.barterCooldown ?? 0) > 0) s = { ...s, barterCooldown: s.barterCooldown - 1 };
+  // ── COOLDOWN TICKY ─────────────────────────────────────────────────
+  if (next.darkMarketCooldown > 0) next = { ...next, darkMarketCooldown: next.darkMarketCooldown - 1 };
+  if ((next.barterCooldown ?? 0) > 0) next = { ...next, barterCooldown: next.barterCooldown - 1 };
 
-  if (s.layLowActive) {
-    const remaining = s.layLowTimer - 1;
+  // ── LAY LOW TIMER ──────────────────────────────────────────────────
+  if (next.layLowActive) {
+    const remaining = next.layLowTimer - 1;
     if (remaining <= 0) {
-      s = { ...s, layLowActive: false, layLowTimer: 0, layLowCooldown: 60,
-            log: addLog(s.log, ':: LAY_LOW COMPLETE :: cooldowns accelerated') };
-    } else {
-      s = { ...s, layLowTimer: remaining };
-    }
-  } else if (s.layLowCooldown > 0) {
-    s = { ...s, layLowCooldown: s.layLowCooldown - 1 };
-  }
-
-  // ── Police raid countdown ─────────────────────────────────────────────────
-  if (!(s.raidActive ?? false)) {
-    const newNext = ((s.nextRaidIn ?? randomRaidInterval()) - 1);
-    if (newNext <= 0) {
-      const cdWasActive = (s.layLowCooldown ?? 0) > 0;
-      let raidLog = addLog(s.log, `:: POLICE RAID INCOMING :: LAY LOW IN ${RAID_DURATION}s OR LOSE 30% CR`);
-      if (cdWasActive) raidLog = addLog(raidLog, ':: RAID ALERT :: LAY_LOW cooldown cleared');
-      s = {
-        ...s, raidActive: true, raidTimer: RAID_DURATION, nextRaidIn: randomRaidInterval(),
-        layLowCooldown: 0, layLowActive: false, layLowTimer: 0,
-        log: raidLog,
+      next = {
+        ...next,
+        layLowActive: false,
+        layLowTimer: 0,
+        layLowCooldown: 60,
+        log: addLog(next.log, ':: LAY_LOW COMPLETE :: cooldowns accelerated')
       };
     } else {
-      s = { ...s, nextRaidIn: newNext };
+      next = { ...next, layLowTimer: remaining };
+    }
+  } else if (next.layLowCooldown > 0) {
+    next = { ...next, layLowCooldown: next.layLowCooldown - 1 };
+  }
+
+  // ── RAID SYSTEM ────────────────────────────────────────────────────
+  if (!(next.raidActive ?? false)) {
+    const newNextRaid = ((next.nextRaidIn ?? randomRaidInterval()) - 1);
+    if (newNextRaid <= 0) {
+      const cdWasActive = (next.layLowCooldown ?? 0) > 0;
+      let raidLog = addLog(next.log, `:: POLICE RAID INCOMING :: LAY LOW IN ${RAID_DURATION}s OR LOSE 30% CR`);
+      if (cdWasActive) raidLog = addLog(raidLog, ':: RAID ALERT :: LAY_LOW cooldown cleared');
+
+      next = {
+        ...next,
+        raidActive: true,
+        raidTimer: RAID_DURATION,
+        nextRaidIn: randomRaidInterval(),
+        layLowCooldown: 0,
+        layLowActive: false,
+        layLowTimer: 0,
+        log: raidLog
+      };
+    } else {
+      next = { ...next, nextRaidIn: newNextRaid };
     }
   } else {
-    const newTimer = (s.raidTimer ?? 0) - 1;
+    const newTimer = (next.raidTimer ?? 0) - 1;
     if (newTimer <= 0) {
-      const raidReduction = Math.min(0.25, calculateMapModifiers(s).raidPenaltyReduction);
-      const goldLost      = Math.floor(s.gold * Math.max(0.05, 0.30 - raidReduction));
-      s = {
-        ...s, raidActive: false, raidTimer: 0, nextRaidIn: randomRaidInterval(),
-        gold: Math.max(0, s.gold - goldLost),
-        log: addLog(s.log, `:: RAID :: CREDITS SEIZED :: -${goldLost.toLocaleString()} CR`),
+      const raidReduction = Math.min(0.25, calculateMapModifiers(next).raidPenaltyReduction);
+      const goldLost = Math.floor(next.gold * Math.max(0.05, 0.30 - raidReduction));
+      next = {
+        ...next,
+        raidActive: false,
+        raidTimer: 0,
+        nextRaidIn: randomRaidInterval(),
+        gold: Math.max(0, next.gold - goldLost),
+        log: addLog(next.log, `:: RAID :: CREDITS SEIZED :: -${goldLost.toLocaleString()} CR`)
       };
     } else {
-      s = { ...s, raidTimer: newTimer };
+      next = { ...next, raidTimer: newTimer };
     }
   }
 
-  // ── Betrayal (heat >= 70 + runners present) ───────────────────────────────
-  const totalRunners = Object.values(s.runners).reduce((sum, c) => sum + c, 0);
-  if (s.heat >= 70 && totalRunners > 0) {
+  // ── BETRAYAL ───────────────────────────────────────────────────────
+  const totalRunners = Object.values(next.runners ?? {}).reduce((sum, c) => sum + c, 0);
+  if (next.heat >= 70 && totalRunners > 0) {
     const perRunnerChance = DEV_MODE ? 0.005 : 0.0005;
     if (Math.random() < totalRunners * perRunnerChance) {
-      const types = Object.entries(s.runners).filter(([, c]) => c > 0);
+      const types = Object.entries(next.runners ?? {}).filter(([, c]) => c > 0);
       let r = Math.random() * types.reduce((sum, [, c]) => sum + c, 0);
       let betrayer = types[0][0];
       for (const [type, c] of types) { r -= c; if (r <= 0) { betrayer = type; break; } }
-      const goldLost = Math.floor(s.gold * 0.15);
-      s = {
-        ...s,
-        gold: Math.max(0, s.gold - goldLost),
-        heat: Math.min(100, s.heat + 20),
-        log: addLog(s.log, `:: BETRAYAL :: ${RUNNER_LABELS[betrayer] ?? betrayer.toUpperCase()} sold your location :: -${goldLost.toLocaleString()} CR :: HEAT +20`),
+
+      const goldLost = Math.floor(next.gold * 0.15);
+      next = {
+        ...next,
+        gold: Math.max(0, next.gold - goldLost),
+        heat: Math.min(100, next.heat + 20),
+        log: addLog(next.log, `:: BETRAYAL :: ${RUNNER_LABELS[betrayer] ?? betrayer.toUpperCase()} sold your location :: -${goldLost.toLocaleString()} CR :: HEAT +20`),
       };
-      s = applyBustedCheck(s);
-      s = addZero(s, 'betrayal');
+      next = applyBustedCheck(next);
+      next = addZero(next, 'betrayal');
     }
   }
 
-  // ── AI_SUBROUTINE heat suppression ────────────────────────────────────────
-  if ((s.upgrades.aiSubroutine ?? 0) >= 1) {
-    const newAiTick = (s.aiSubroutineTick ?? 0) + 1;
+  // ── AI_SUBROUTINE ──────────────────────────────────────────────────
+  if ((next.upgrades.aiSubroutine ?? 0) >= 1) {
+    const newAiTick = (next.aiSubroutineTick ?? 0) + 1;
     if (newAiTick >= AI_SUBROUTINE_CYCLE) {
-      s = { ...s, heat: Math.max(0, s.heat - 25), aiSubroutineTick: 0,
-            log: addLog(s.log, ':: AI_SUBROUTINE :: heat suppressed :: -25 HEAT') };
+      next = {
+        ...next,
+        heat: Math.max(0, next.heat - 25),
+        aiSubroutineTick: 0,
+        log: addLog(next.log, ':: AI_SUBROUTINE :: heat suppressed :: -25 HEAT')
+      };
     } else {
-      s = { ...s, aiSubroutineTick: newAiTick };
+      next = { ...next, aiSubroutineTick: newAiTick };
     }
   }
 
-  // ── System Scan countdown ─────────────────────────────────────────────────
-  if (!(s.systemScan?.active ?? false)) {
-		const nextIn = ((s.systemScan?.nextIn) ?? randomScanInterval()) - 1;
-		if (nextIn <= 0) {
-			s = {
-				...s,
-				systemScan: { active: true, timer: SCAN_DURATION, nextIn: randomScanInterval() },
-				log: addLog(s.log, '!! SYSTEM_SCAN DETECTED :: PURGE LOCAL LOGS IMMEDIATELY'),
-			};
-		} else {
-			s = { ...s, systemScan: { ...(s.systemScan ?? {}), active: false, nextIn } };
-		}
-	} else {
-		const scanTimer = (s.systemScan.timer ?? 0) - 1;
-		if (scanTimer <= 0) {
-			const goldLost = Math.floor(s.gold * 0.20);
-			s = {
-				...s,
-				gold:       Math.max(0, s.gold - goldLost),
-				heat:       Math.min(100, s.heat + 40),
-				systemScan: { active: false, timer: 0, nextIn: randomScanInterval() },
-				log: addLog(s.log, `:: SCAN COMPLETE :: TRACED :: -${goldLost.toLocaleString()} CR :: HEAT +40`),
-			};
-			s = applyBustedCheck(s);
-		} else {
-			s = { ...s, systemScan: { ...s.systemScan, timer: scanTimer } };
-		}
-	}
+  // ── SYSTEM SCAN ────────────────────────────────────────────────────
+  if (!(next.systemScan?.active ?? false)) {
+    const nextIn = ((next.systemScan?.nextIn) ?? randomScanInterval()) - 1;
+    if (nextIn <= 0) {
+      next = {
+        ...next,
+        systemScan: { active: true, timer: SCAN_DURATION, nextIn: randomScanInterval() },
+        log: addLog(next.log, '!! SYSTEM_SCAN DETECTED :: PURGE LOCAL LOGS IMMEDIATELY'),
+      };
+    } else {
+      next = { ...next, systemScan: { ...(next.systemScan ?? {}), active: false, nextIn } };
+    }
+  } else {
+    const scanTimer = (next.systemScan.timer ?? 0) - 1;
+    if (scanTimer <= 0) {
+      const goldLost = Math.floor(next.gold * 0.20);
+      next = {
+        ...next,
+        gold: Math.max(0, next.gold - goldLost),
+        heat: Math.min(100, next.heat + 40),
+        systemScan: { active: false, timer: 0, nextIn: randomScanInterval() },
+        log: addLog(next.log, `:: SCAN COMPLETE :: TRACED :: -${goldLost.toLocaleString()} CR :: HEAT +40`),
+      };
+      next = applyBustedCheck(next);
+    } else {
+      next = { ...next, systemScan: { ...next.systemScan, timer: scanTimer } };
+    }
+  }
 
-  return { ...s, lastTickTime: nowMs };
+  return { ...next, lastTickTime: nowMs };
+}
+
+export function checkMissions(state) {
+  if (!state.activeMissions || state.activeMissions.length === 0) return state;
+
+  let next = { ...state };
+  const now = Date.now();
+
+  const finished = next.activeMissions.filter(m => now >= m.endTime);
+  if (finished.length === 0) return next;
+
+  finished.forEach(m => {
+    const hex = AETHERIA_MAP[m.hexId];
+    if (!hex) return;
+
+    // Návrat runnera do aktívnej služby
+    next.runners = { 
+      ...next.runners, 
+      [m.runnerType]: (next.runners[m.runnerType] || 0) + 1 
+    };
+   
+    // Masívny XP bonus za misiu
+    const currentXp = next.runnerXp[m.runnerType] || 0;
+    next.runnerXp = { 
+      ...next.runnerXp, 
+      [m.runnerType]: Math.min(100, currentXp + 20) 
+    };
+
+    // Ak uzol ešte nevlastníme, pripíšeme odmeny + missionSplash
+    if (!(next.capturedHexes || []).includes(m.hexId)) {
+      const mult = hex.lootMultiplier || 1;
+      const goldReward = Math.floor((Math.random() * 5000 + 5000) * mult);
+      const xpReward = Math.floor(1500 * mult);
+
+      next.gold += goldReward;
+      next.xp += xpReward;
+
+      next.capturedHexes = [...(next.capturedHexes || []), m.hexId];
+      next.mapDiscovery = [...new Set([
+        ...(next.mapDiscovery || []), 
+        m.hexId, 
+        ...(hex.connections || [])
+      ])];
+
+      // === NOVÁ SPLASH SCREEN LOGIKA ===
+      next.missionSplash = {
+        label: hex.label || hex.name || 'UNKNOWN_NODE',
+        runnerType: m.runnerType,
+        gold: goldReward,
+        xp: xpReward,
+        timestamp: Date.now()
+      };
+
+      const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+
+      next.log = [
+        `[${t}] :: MISSION_SUCCESS :: ${hex.label} SECURED`,
+        `[${t}] :: REWARD :: +${goldReward.toLocaleString()} CR | +${xpReward} XP | +20 SPEC_XP`,
+        ...(next.log || [])
+      ].slice(0, 50);
+    }
+  });
+
+  // Odstránime dokončené misie
+  next.activeMissions = next.activeMissions.filter(m => now < m.endTime);
+
+  return next;
 }
 
 // ── SYSTEM SCAN ───────────────────────────────────────────────────────────────
