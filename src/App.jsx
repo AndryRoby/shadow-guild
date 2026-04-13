@@ -27,11 +27,11 @@ function calcMaxInventory(upgrades) {
 // ── INITIAL STATE ─────────────────────────────────────────────────────────────
 
 const FRESH_STATE = {
-  gold:               0,
-  reputation:         0,
+  gold:               1100000,
+  reputation:         10000,
   heat:               0,
   stamina:            100,
-  level:              0,
+  level:              10,
   xp:                 0,
   prestige:           0,
   prestigeMultiplier: 1.0,
