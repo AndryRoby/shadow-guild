@@ -505,251 +505,189 @@ function RunnerCard({ runnerType, label, count, gold, level, unlockLevel, requir
 
 // ── NETWORK INFILTRATION MANAGER ──
 function NetworkManager({ state, dispatch }) {
-  const captured = state.capturedHexes ?? [];
-  const missions = state.activeMissions ?? [];
-  const MAP = AETHERIA_MAP;
-  const maxMissions = 2;
-  const isOverloaded = missions.length >= maxMissions;
+	const captured = state.capturedHexes ?? [];
+	const missions = state.activeMissions ?? [];
+	const MAP = AETHERIA_MAP;
+	const maxMissions = 2;
+	const isOverloaded = missions.length >= maxMissions;
 
-  const nodesByDistrict = Object.values(MAP).reduce((acc, node) => {
-    const dId = node.districtId;
-    if (!acc[dId]) acc[dId] = [];
-    acc[dId].push(node);
-    return acc;
-  }, {});
+	const nodesByDistrict = Object.values(MAP).reduce((acc, node) => {
+		const dId = node.districtId;
+		if (!acc[dId]) acc[dId] = [];
+		acc[dId].push(node);
+		return acc;
+	}, {});
 
-  const [, setRenderTrigger] = useState(0);
+	const [, setRenderTrigger] = useState(0);
 
-  useEffect(() => {
-    if (missions.length === 0) return;
-    const timer = setInterval(() => setRenderTrigger(v => v + 1), 1000);
-    return () => clearInterval(timer);
-  }, [missions]);
+	useEffect(() => {
+		if (missions.length === 0) return;
+		const timer = setInterval(() => setRenderTrigger(v => v + 1), 1000);
+		return () => clearInterval(timer);
+	}, [missions]);
 
-  const R_LABELS = {
-    streetRunner: 'ST-RUN',
-    dataThief: 'D-THIEF',
-    infiltrator: 'INFILTR',
-    fixer: 'FIXER',
-    shadowBroker: 'BROKER'
-  };
+	const R_LABELS = {
+		streetRunner: 'ST-RUN',
+		dataThief: 'D-THIEF',
+		infiltrator: 'INFILTR',
+		fixer: 'FIXER',
+		shadowBroker: 'BROKER'
+	};
 
-  // === GLOBAL STORY PROGRESS (Z4 Slums requirement) ===
-  const slumsCaptured = captured.filter(id => AETHERIA_MAP[id]?.districtId === 'Z4').length;
+	// === GLOBAL STORY PROGRESS (Z4 Slums requirement) ===
+	const slumsCaptured = captured.filter(id => AETHERIA_MAP[id]?.districtId === 'Z4').length;
 
-  return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
-      
-      {/* PANEL AKTÍVNYCH MISIÍ */}
-      <div style={{
-        marginBottom: 16,
-        padding: '10px',
-        background: isOverloaded ? 'rgba(239, 68, 68, 0.05)' : 'rgba(0, 212, 255, 0.05)',
-        borderLeft: `2px solid ${isOverloaded ? '#ef4444' : '#00d4ff'}`
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-          <span style={{
-            fontSize: 9,
-            color: isOverloaded ? '#ef4444' : '#00d4ff',
-            letterSpacing: '0.1rem',
-            fontWeight: 700
-          }}>
-            :: ACTIVE_INFILTRATIONS [{missions.length}/{maxMissions}]
-          </span>
-        </div>
-        {missions.length === 0 && <div style={{ fontSize: 9, color: 'var(--muted)' }}>[NO_ACTIVE_MISSIONS]</div>}
-        {missions.map((m, i) => {
-          const secondsLeft = Math.max(0, Math.round((m.endTime - Date.now()) / 1000));
-          return (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: 'monospace', marginBottom: 4 }}>
-              <span style={{ color: 'var(--amber)' }}>
-                {m.label} <span style={{ color: 'var(--muted)' }}>[{R_LABELS[m.runnerType]}]</span>
-              </span>
-              <span style={{ color: secondsLeft > 0 ? '#00d4ff' : '#22c55e' }}>
-                {secondsLeft > 0 ? `T-MINUS ${secondsLeft}s` : 'EXTRACTING...'}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+	return (
+		<div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
+			
+			{/* PANEL AKTÍVNYCH MISIÍ */}
+			<div style={{
+				marginBottom: 16,
+				padding: '10px',
+				background: isOverloaded ? 'rgba(239, 68, 68, 0.05)' : 'rgba(0, 212, 255, 0.05)',
+				borderLeft: `2px solid ${isOverloaded ? '#ef4444' : '#00d4ff'}`
+			}}>
+				<div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+					<span style={{ fontSize: 9, color: isOverloaded ? '#ef4444' : '#00d4ff', letterSpacing: '0.1rem', fontWeight: 700 }}>
+						:: ACTIVE_INFILTRATIONS [{missions.length}/{maxMissions}]
+					</span>
+				</div>
+				{missions.length === 0 && <div style={{ fontSize: 9, color: 'var(--muted)' }}>[NO_ACTIVE_MISSIONS]</div>}
+				{missions.map((m, i) => {
+					const secondsLeft = Math.max(0, Math.round((m.endTime - Date.now()) / 1000));
+					return (
+						<div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: 'monospace', marginBottom: 4 }}>
+							<span style={{ color: 'var(--amber)' }}>
+								{m.label} <span style={{ color: 'var(--muted)' }}>[{R_LABELS[m.runnerType]}]</span>
+							</span>
+							<span style={{ color: secondsLeft > 0 ? '#00d4ff' : '#22c55e' }}>
+								{secondsLeft > 0 ? `T-MINUS ${secondsLeft}s` : 'EXTRACTING...'}
+							</span>
+						</div>
+					);
+				})}
+			</div>
 
-      {/* DISTRICTY + UZLY */}
-      {Object.entries(nodesByDistrict).sort((a, b) => {
-        const order = ['Z4', 'Z7', 'Z2', 'Z3', 'Z6', 'Z1', 'Z5'];
-        return order.indexOf(a[0]) - order.indexOf(b[0]);
-      }).map(([dId, nodes]) => {
-        const district = AETHERIA_DISTRICTS[dId];
-        const isVisible = nodes.some(n => (state.mapDiscovery ?? []).includes(n.id));
-        if (!isVisible && dId !== 'Z4') return null;
+			{/* DISTRICTY + UZLY */}
+			{Object.entries(nodesByDistrict).sort((a, b) => {
+				const order = ['Z4', 'Z7', 'Z2', 'Z3', 'Z6', 'Z1', 'Z5'];
+				return order.indexOf(a[0]) - order.indexOf(b[0]);
+			}).map(([dId, nodes]) => {
+				const district = AETHERIA_DISTRICTS[dId];
+				const isVisible = nodes.some(n => (state.mapDiscovery ?? []).includes(n.id));
+				if (!isVisible && dId !== 'Z4') return null;
 
-        // === GATEKEEPER LOGIKA ===
-        const districtCaptured = nodes.filter(n => captured.includes(n.id)).length;
-        const districtTotal = nodes.length;
-        const hasRegularNodes = nodes.some(n => !n.id.includes('warpgate') && !n.id.includes('buffer'));
-        const nodesRequired = Math.ceil(districtTotal * 0.8);
+				// === GATEKEEPER LOGIKA ===
+				const districtCaptured = nodes.filter(n => captured.includes(n.id)).length;
+				const districtTotal = nodes.length;
+				const hasRegularNodes = nodes.some(n => !n.id.includes('warpgate') && !n.id.includes('buffer'));
+				const nodesRequired = Math.ceil(districtTotal * 0.8);
 
-        return (
-          <div key={dId} style={{ marginBottom: 24 }}>
-            <div style={{
-              fontSize: 10,
-              color: district?.color || 'var(--amber)',
-              fontWeight: 700,
-              marginBottom: 10,
-              borderBottom: '1px solid currentColor',
-              opacity: 0.8,
-              letterSpacing: '0.1rem'
-            }}>
-              :: {district?.name || dId} :: {district?.desc}
-            </div>
+				return (
+					<div key={dId} style={{ marginBottom: 24 }}>
+						<div style={{
+							fontSize: 10, color: district?.color || 'var(--amber)', fontWeight: 700,
+							marginBottom: 10, borderBottom: '1px solid currentColor', opacity: 0.8, letterSpacing: '0.1rem'
+						}}>
+							:: {district?.name || dId} :: {district?.desc}
+						</div>
 
-            {nodes.map(node => {
-              const isOwned = captured.includes(node.id);
-              const activeMission = missions.find(m => m.hexId === node.id);
-              const isAdjacent = (node.connections ?? []).some(c => captured.includes(c));
-              const isGate = node.id.includes('warpgate') || node.id.includes('buffer');
+						{nodes.map(node => {
+							const isOwned = captured.includes(node.id);
+							const activeMission = missions.find(m => m.hexId === node.id);
+							const isAdjacent = (node.connections ?? []).some(c => captured.includes(c));
+							const isGate = node.id.includes('warpgate') || node.id.includes('buffer');
 
-              const canHack = !isOwned && !activeMission && isAdjacent;
+							const canHack = !isOwned && !activeMission && isAdjacent;
 
-              // === GATE LOCK LOGIKA - iba pre neowned uzly ===
-              const isGateLocked = !isOwned && isGate && (
-                (hasRegularNodes && districtCaptured < nodesRequired) ||
-                (dId !== 'Z4' && slumsCaptured < 6)
-              );
+							// === STORY + GATE LOCK LOGIKA ===
+							const isGateLocked = !isOwned && isGate && (
+								(hasRegularNodes && districtCaptured < nodesRequired) ||
+								(dId !== 'Z4' && slumsCaptured < 6)
+							);
 
-              // Výpočet zostávajúcich uzlov
-              const remainingNeeded = dId === 'Z4'
-                ? Math.max(0, nodesRequired - districtCaptured)
-                : Math.max(0, 6 - slumsCaptured);
+							// Zamedzenie infiltrácie mimo štartovaciu zónu bez progresu
+							const isLockedByStory = !isOwned && dId !== 'Z4' && slumsCaptured < 6;
 
-              return (
-                <div key={node.id} style={{
-                  padding: '10px',
-                  background: isOwned ? 'rgba(255,193,116,0.04)' : activeMission ? 'rgba(0, 212, 255, 0.05)' : 'var(--surface-high)',
-                  borderLeft: isOwned ? '2px solid var(--amber)' : activeMission ? '2px solid #00d4ff' : '2px solid transparent',
-                  marginBottom: 6,
-                  opacity: (isOwned || canHack || activeMission) ? 1 : 0.4,
-                  borderRadius: '2px'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: isOwned ? 'var(--amber)' : activeMission ? '#00d4ff' : 'inherit'
-                    }}>
-                      {node.icon} {node.label}
-                    </span>
-                    
-                    <span style={{
-                      fontSize: 9,
-                      fontFamily: 'monospace',
-                      color: isOwned ? 'var(--amber)' :
-                            activeMission ? '#00d4ff' :
-                            isGateLocked ? '#ef4444' : 'var(--muted)'
-                    }}>
-                      {isOwned ? '[SECURED]' :
-                       activeMission ? '[IN_PROGRESS]' :
-                       isGateLocked ? `[LOCKED: ${dId === 'Z4' ? districtCaptured : slumsCaptured}/${dId === 'Z4' ? nodesRequired : 6} REQ]` :
-                       (canHack ? '[READY]' : '[ENCRYPTED]')}
-                    </span>
-                  </div>
+							const remainingNeeded = dId === 'Z4'
+								? Math.max(0, nodesRequired - districtCaptured)
+								: Math.max(0, 6 - slumsCaptured);
 
-                  {/* TLAČIDLÁ PRE NASADENIE RUNNEROV */}
-                  {canHack && !isGateLocked && (
-                    <div style={{ marginTop: 8 }}>
-                      {isOverloaded ? (
-                        <span style={{ fontSize: 9, color: '#ef4444', fontWeight: 700 }}>[SYS_OVERLOAD: ALL CHANNELS BUSY]</span>
-                      ) : (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                          {Object.entries(state.runners).map(([type, count]) => {
-                            if (count <= 0) return null;
-                            return (
-                              <button
-                                key={type}
-                                onClick={() => dispatch({ type: 'DEPLOY_RUNNER', hexId: node.id, runnerType: type })}
-                                style={{
-                                  padding: '4px 7px',
-                                  background: 'transparent',
-                                  border: '1px solid var(--amber)',
-                                  color: 'var(--amber)',
-                                  fontSize: 8,
-                                  cursor: 'pointer',
-                                  fontFamily: 'monospace'
-                                }}
-                              >
-                                DEPLOY {R_LABELS[type]} ({count})
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
+							const requirementName = AETHERIA_DISTRICTS['Z4']?.name || 'WESTERN_SLUMS';
 
-                  {/* Zamknutá správa - iba ak nie je secured */}
-                  {isGateLocked && !isOwned && (
-                    <div style={{ marginTop: 6, fontSize: 8, color: '#ef4444', fontWeight: 500 }}>
-                      [!] SECURE {remainingNeeded} MORE {dId === 'Z4' ? 'NODES' : 'Z4 NODES'} TO UNLOCK GATEWAY
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+							return (
+								<div key={node.id} style={{
+									padding: '10px',
+									background: isOwned ? 'rgba(255,193,116,0.04)' : activeMission ? 'rgba(0, 212, 255, 0.05)' : 'var(--surface-high)',
+									borderLeft: isOwned ? '2px solid var(--amber)' : activeMission ? '2px solid #00d4ff' : '2px solid transparent',
+									marginBottom: 6,
+									opacity: (isOwned || canHack || activeMission) ? 1 : 0.4,
+									borderRadius: '2px'
+								}}>
+									<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+										<span style={{ fontSize: 11, fontWeight: 700, color: isOwned ? 'var(--amber)' : activeMission ? '#00d4ff' : 'inherit' }}>
+											{node.icon} {node.label}
+										</span>
+										
+										<span style={{
+											fontSize: 9, fontFamily: 'monospace',
+											color: isOwned ? 'var(--amber)' : activeMission ? '#00d4ff' : isGateLocked ? '#ef4444' : 'var(--muted)'
+										}}>
+											{isOwned ? '[SECURED]' :
+											 activeMission ? '[IN_PROGRESS]' :
+											 isGateLocked ? `[LOCKED: ${dId === 'Z4' ? districtCaptured : slumsCaptured}/${dId === 'Z4' ? nodesRequired : 6} REQ]` :
+											 (canHack ? '[READY]' : '[ENCRYPTED]')}
+										</span>
+									</div>
 
-// ── NETWORK STATUS MODULE ──
-function NetworkStatusModule({ state }) {
-  const mods = calculateMapModifiers(state);
-  const owned = (state.capturedHexes ?? []).length;
-  const total = Object.keys(AETHERIA_MAP).length;
+									<div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 4 }}>
+										{(node.effectHooks ?? []).map(h => h.desc).join(' · ')}
+									</div>
 
-  const revenue = Math.round((mods.goldMult - 1) * 100);
-  const xp = Math.round((mods.xpBoost ?? 0) * 100);
-  const siphon = Math.round((mods.siphonSuccessBonus ?? 0) * 100);
-  const heatDecay = mods.heatDecayBonus?.toFixed(2) ?? '0.00';
-  const rep = Math.round((mods.repBoost ?? 0) * 100);
+									{/* TLAČIDLÁ PRE NASADENIE RUNNEROV - Zobrazia sa len ak nie je lock */}
+									{canHack && !isGateLocked && (
+										<div style={{ marginTop: 8 }}>
+											{isOverloaded ? (
+												<span style={{ fontSize: 9, color: '#ef4444', fontWeight: 700 }}>[SYS_OVERLOAD: ALL CHANNELS BUSY]</span>
+											) : (
+												<div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+													{Object.entries(state.runners).map(([type, count]) => {
+														if (count <= 0) return null;
+														return (
+															<button
+																key={type}
+																onClick={() => dispatch({ type: 'DEPLOY_RUNNER', hexId: node.id, runnerType: type })}
+																style={{
+																	padding: '4px 7px', background: 'transparent',
+																	border: '1px solid var(--amber)', color: 'var(--amber)',
+																	fontSize: 8, cursor: 'pointer', fontFamily: 'monospace'
+																}}
+															>
+																DEPLOY {R_LABELS[type]} ({count})
+															</button>
+														);
+													})}
+												</div>
+											)}
+										</div>
+									)}
 
-  const parts = [];
-  if (revenue > 0) parts.push(`REV: +${revenue}%`);
-  if (xp > 0) parts.push(`XP: +${xp}%`);
-  if (siphon > 0) parts.push(`SIPHON: +${siphon}%`);
-  if (rep > 0) parts.push(`REP: +${rep}%`);
-  if (mods.heatDecayBonus > 0) parts.push(`STLTH: +${heatDecay}/s`);
-
-  return (
-    <div style={{
-      padding: '9px 11px',
-      marginBottom: 14,
-      background: 'var(--surface-high)',
-      borderLeft: '3px solid var(--amber)',
-      fontSize: 9,
-      letterSpacing: '0.05rem',
-      borderRadius: '2px'
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        <span style={{ color: 'var(--amber)', fontWeight: 700, fontSize: 10 }}>
-          NETWORK_STATUS [{owned}/{total}]
-        </span>
-        <span style={{ fontSize: 8, color: 'var(--muted)' }}>:: ACTIVE_BOOSTS</span>
-      </div>
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px' }}>
-        {parts.length > 0 ? (
-          parts.map((p, i) => (
-            <span key={i} style={{ color: '#22c55e', fontWeight: 600 }}>
-              [{p}]
-            </span>
-          ))
-        ) : (
-          <span style={{ color: 'var(--muted)', opacity: 0.6 }}>[NO_ACTIVE_NODES]</span>
-        )}
-      </div>
-    </div>
-  );
+									{/* CHYBOVÉ SPRÁVY O ZÁMKU (Vnútri kontajnera uzla) */}
+									{isGateLocked && !isOwned && (
+										<div style={{ marginTop: 6, fontSize: 8, color: '#ef4444', borderTop: '1px solid rgba(239, 68, 68, 0.2)', paddingTop: 4 }}>
+											{isLockedByStory 
+												? `[!] SECURE_${requirementName}: ${slumsCaptured}/6 NODES REQUIRED` 
+												: `[!] SECURE ${remainingNeeded} MORE NODES IN THIS SECTOR TO UNLOCK GATEWAY`}
+										</div>
+									)}
+								</div>
+							);
+						})}
+					</div>
+				);
+			})}
+		</div>
+	);
 }
 
 // ── OFFLINE POPUP ──────────────────────────────────────────────────────────────
