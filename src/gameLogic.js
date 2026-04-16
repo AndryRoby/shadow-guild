@@ -84,6 +84,65 @@ const LOOT_PREFIXES = [
 	{ id: 'CORRUPTED', creditMult: 0.8, heatMult: 1.0,  xpMult: 1.0, cooldownMult: 0.8 },
 ];
 
+// ── AGENT NAMES ──────────────────────────────────────────
+
+
+const AGENT_NAMES = [
+  // Pôvodné
+  'Ghost', 'Viper', 'Neon', 'Proxy', 'Razor', 'Cipher', 'Jax', 'Nyx',
+  'Zero', 'Echo', 'Vector', 'Zenith', 'Kestrel', 'Vex', 'Rogue', 'Bit',
+  
+  // Nové - Technické
+  'Phantom', 'Wraith', 'Spectre', 'Shadow', 'Void', 'Shade', 'Umbra', 'Glimmer',
+  'Pulse', 'Static', 'Circuit', 'Node', 'Kernel', 'Cache', 'Flux', 'Nexus',
+  
+  // Nové - Zvieratá
+  'Raven', 'Wolf', 'Falcon', 'Hawk', 'Owl', 'Lynx', 'Panther', 'Cobra',
+  'Vulture', 'Jackal', 'Phoenix', 'Dragon', 'Griffin', 'Sphinx', 'Hydra',
+  
+  // Nové - Mytologické
+  'Odin', 'Thor', 'Loki', 'Freya', 'Athena', 'Ares', 'Hermes', 'Nemesis',
+  'Hades', 'Apollo', 'Artemis', 'Orion', 'Titan', 'Erebus', 'Chronos',
+  
+  // Nové - Cyberpunk
+  'Cyber', 'Synth', 'Neural', 'Digital', 'Quantum', 'Atomic', 'Plasma', 'Laser',
+  'Nova', 'Aether', 'Helix', 'Matrix', 'Glitch', 'Crash', 'Reboot', 'Daemon',
+  
+  // Nové - Agresívne
+  'Reaper', 'Havoc', 'Chaos', 'Mayhem', 'Fury', 'Rampage', 'Warden', 'Judge',
+  'Nemesis', 'Vengeance', 'Justice', 'Talon', 'Blade', 'Steel', 'Iron', 'Titan'
+];
+
+const AGENT_SUFFIXES = [
+  // Pôvodné
+  '47', 'X', 'Alpha', 'Nine', 'Zero-One', 'Prime', 'Mk.II', 'Shadow',
+  
+  // Nové - Čísla
+  '7', '11', '13', '21', '34', '42', '69', '77', '86', '99', '404', '777',
+  
+  // Nové - Kódové
+  'Kilo', 'Romeo', 'Victor', 'Delta', 'Sigma', 'Omega', 'Gamma', 'Beta',
+  'Epsilon', 'Zeta', 'Theta', 'Iota', 'Lambda', 'Mu', 'Nu', 'Xi',
+  
+  // Nové - Technické
+  'Core', 'Pro', 'Ultra', 'Max', 'Extreme', 'X-Treme', 'Mk.III', 'Mk.IV',
+  'v2.0', 'v3.0', 'NX', 'GT', 'XLS', 'Turbo', 'Nitro',
+  
+  // Nové - Štylizované
+  'Z3R0', 'N1N3', 'F0UR', 'S1X', 'E1GHT', 'N1NE', 'T3N', 'Z3RO',
+  'GH0ST', 'PH4NT0M', 'V01D', 'CH40S', 'R3B00T', 'GL1TCH',
+  
+  // Nové - Dvojslovné
+  'Black', 'Red', 'Blue', 'Green', 'Gold', 'Silver', 'Bronze', 'Platinum',
+  'Stealth', 'Viper', 'Raven', 'Wolf', 'Hawk', 'Falcon', 'Talon'
+];
+
+export function generateAgentName() {
+	const name = AGENT_NAMES[Math.floor(Math.random() * AGENT_NAMES.length)];
+	const suffix = AGENT_SUFFIXES[Math.floor(Math.random() * AGENT_SUFFIXES.length)];
+	return `${name.toUpperCase()}_${suffix.toUpperCase()}`;
+}
+
 // ── OPERATION PROTOCOLS ───────────────────────────────────────────────────────
 
 export const PROTOCOL_DEFS = {
@@ -172,6 +231,7 @@ export function isUnlocked(state, feature) {
     case 'upgrades_tab': return lvl >= 3;
     case 'heat':         return true;
     case 'runners':      return lvl >= 3;
+    case 'agency':       return lvl >= 3;
     // Level 4
     case 'rep':          return lvl >= 4;
     case 'dark_market':  return lvl >= 4;
@@ -284,42 +344,55 @@ export function captureHex(state, hexId) {
 // effectHooks is an array of { type, value } objects (CITY_MAP.js format).
 // goldMult / runner_speed are compound-multiplicative; all others additive.
 export function calculateMapModifiers(state) {
-	const owned  = state.capturedHexes ?? [];
-	const result = {
-		heatDecayBonus:       0,
-		goldMult:             1,
-		passiveGold:          0,
-		siphonSuccessBonus:   0,
-		bustThresholdBonus:   0,
-		raidPenaltyReduction: 0,
-		staminaRegen:         0,
-		xpBoost:              0,
-		runnerSpeedMult:      1,
-		critChanceBonus:      0,
-		repBoost:             0,
-	};
-	for (const id of owned) {
-		const hex = CITY_MAP[id];
-		if (!hex || hex.type === 'empty_block') continue;
-		const hooks = Array.isArray(hex.effectHooks) ? hex.effectHooks : [];
-		for (const h of hooks) {
-			if (!h || h.type === 'none') continue;
-			switch (h.type) {
-				case 'heat_decay':      result.heatDecayBonus       += h.value; break;
-				case 'gold_mult':       result.goldMult             *= (1 + h.value); break;
-				case 'siphon_rate':     result.siphonSuccessBonus   += h.value; break;
-				case 'bust_threshold':  result.bustThresholdBonus   += h.value; break;
-				case 'stamina_regen':   result.staminaRegen         += h.value; break;
-				case 'xp_boost':        result.xpBoost              += h.value; break;
-				case 'runner_speed':    result.runnerSpeedMult      *= (1 + h.value); break;
-				case 'crit_chance':     result.critChanceBonus      += h.value; break;
-				case 'rep_boost':       result.repBoost             += h.value; break;
-				// passiveGold / raidPenaltyReduction — no direct CITY_MAP.js type
-				default: break;
-			}
-		}
-	}
-	return result;
+  const owned = state.capturedHexes ?? [];
+  
+  const result = {
+    heatDecayBonus:       0,
+    goldMult:             1,
+    passiveGold:          0,
+    siphonSuccessBonus:   0,
+    bustThresholdBonus:   0,
+    raidPenaltyReduction: 0,
+    staminaRegen:         0,
+    xpBoost:              0,
+    runnerSpeedMult:      1,
+    critChanceBonus:      0,
+    repBoost:             0,
+    // 🔥 NOVÉ MODIFIKÁTORY
+    darkMarketCd:         0,    // Zníženie CD Dark Marketu (napr. -1800s)
+    intelDiscount:        0,    // Zľava na Intel upgrady (napr. 0.2 = 20%)
+  };
+  
+  for (const id of owned) {
+    const hex = CITY_MAP[id];
+    if (!hex || hex.type === 'empty_block') continue;
+    const hooks = Array.isArray(hex.effectHooks) ? hex.effectHooks : [];
+    
+    for (const h of hooks) {
+      if (!h || h.type === 'none') continue;
+      
+      switch (h.type) {
+        case 'heat_decay':      result.heatDecayBonus       += h.value; break;
+        case 'gold_mult':       result.goldMult             *= (1 + h.value); break;
+        case 'siphon_rate':     result.siphonSuccessBonus   += h.value; break;
+        case 'bust_threshold':  result.bustThresholdBonus   += h.value; break;
+        case 'stamina_regen':   result.staminaRegen         += h.value; break;
+        case 'xp_boost':        result.xpBoost              += h.value; break;
+        case 'runner_speed':    result.runnerSpeedMult      *= (1 + h.value); break;
+        case 'crit_chance':     result.critChanceBonus      += h.value; break;
+        case 'rep_boost':       result.repBoost             += h.value; break;
+        
+        // 🔥 NOVÉ PRÍPADY
+        case 'dark_market_cd':  result.darkMarketCd         += h.value; break;
+        case 'intel_discount':  result.intelDiscount        += h.value; break;
+        
+        // passiveGold / raidPenaltyReduction — no direct CITY_MAP.js type
+        default: break;
+      }
+    }
+  }
+  
+  return result;
 }
 
 // Returns the initial mapDiscovery: starting hex + its immediate neighbors.
@@ -406,12 +479,28 @@ export const UPGRADE_DEFS = [
 
 export const INTEL_UPGRADE_DEFS = [
   { key: 'netScanner',   label: 'NET_SCANNER',   repCost: 25,  max: 1, effect: 'Show effective success rate on actions' },
-  { key: 'corpMole',     label: 'CORP_MOLE',     repCost: 50,  max: 1, effect: 'Heat decay 2x faster'                  },
-  { key: 'deepSource',   label: 'DEEP_SOURCE',   repCost: 100, max: 1, effect: 'Loot value +10%'                       },
-  { key: 'darkExchange', label: 'DARK_EXCHANGE', repCost: 200, max: 1, effect: 'Dark Market cooldown -30min'           },
+  { key: 'corpMole',     label: 'CORP_MOLE',     repCost: 50,  max: 1, effect: 'Heat decay 2x faster' },
+  { key: 'deepSource',   label: 'DEEP_SOURCE',   repCost: 100, max: 1, effect: 'Loot value +10%' },
+  { key: 'darkExchange', label: 'DARK_EXCHANGE', repCost: 200, max: 1, effect: 'Dark Market cooldown -30min' },
+  { key: 'serverRacks',  label: 'SOFT_BANDWIDTH', repCost: 150, max: 30, effect: '+1 Max Bandwidth' },
+  { key: 'hardenedCables', label: 'HARDENED_NODES', repCost: 500, max: 5, effect: 'Node Decay -20% per level' },
+  { key: 'quantumRelay', label: 'QUANTUM_LINK', repCost: 2000, max: 1, effect: 'One random node immune to Decay' },
 ];
 
 // ── LORE MESSAGES ─────────────────────────────────────────────────────────────
+
+export function getIntelUpgradeCost(upgradeKey, currentLevel) {
+	const def = INTEL_UPGRADE_DEFS.find(u => u.key === upgradeKey);
+	if (!def) return 0;
+	
+	// Pre serverRacks použijeme škálovanie, ostatné (max: 1) ostanú fixné
+	if (upgradeKey === 'serverRacks') {
+		return Math.floor(def.repCost * Math.pow(1.25, currentLevel));
+	}
+	
+	return def.repCost;
+}
+
 
 function randomPick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -749,6 +838,7 @@ function checkLevelUp(state) {
 }
 
 function applyIncome(state, amount) {
+  const idleMult = state.isIdle ? 0.6 : 1.0;
   const mult   = state.prestigeMultiplier ?? 1;
   const earned = Math.round(amount * mult);
   return {
@@ -802,7 +892,7 @@ export function siphon(state) {
     return { ...state, log: addLog(state.log, ':: SIPHON ABORTED — INSUFFICIENT_STAMINA') };
   }
 
-  const distMult        = DISTRICTS[state.district]?.lootMult ?? 1;
+  const distMult = DISTRICTS[state.district]?.lootMultiplier ?? 1;
   const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
   const heatPenalty     = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
   const bountyPen       = (state.bountyActive ?? false) ? 0.20 : 0;
@@ -890,7 +980,7 @@ export function breach(state) {
     return { ...state, log: addLog(state.log, ':: BREACH ABORTED — INSUFFICIENT_STAMINA') };
   }
 
-  const distMult        = DISTRICTS[state.district]?.lootMult ?? 1;
+  const distMult = DISTRICTS[state.district]?.lootMultiplier ?? 1;
   const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
   const heatPenalty     = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
   const bountyPen       = (state.bountyActive ?? false) ? 0.20 : 0;
@@ -971,7 +1061,7 @@ export function deepSiphon(state) {
     return { ...state, log: addLog(state.log, ':: DEEP_SIPHON ABORTED — INSUFFICIENT_STAMINA') };
   }
 
-  const distMult        = DISTRICTS[state.district]?.lootMult ?? 1;
+  const distMult = DISTRICTS[state.district]?.lootMultiplier ?? 1;
   const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
   const heatPenalty     = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
   const bountyPen       = (state.bountyActive ?? false) ? 0.20 : 0;
@@ -1053,7 +1143,7 @@ export function mainframeHack(state) {
     return { ...state, log: addLog(state.log, ':: MAINFRAME_HACK ABORTED — INSUFFICIENT_STAMINA') };
   }
 
-  const distMult        = DISTRICTS[state.district]?.lootMult ?? 1;
+  const distMult = DISTRICTS[state.district]?.lootMultiplier ?? 1;
   const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
   const heatPenalty     = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
   const bountyPen       = (state.bountyActive ?? false) ? 0.20 : 0;
@@ -1177,25 +1267,49 @@ export function manualCool(state) {
 }
 
 export function darkMarket(state) {
-  if (state.level < 4 || state.reputation < 50) return state;
-  if (state.darkMarketCooldown > 0)              return state;
+  const unlocked = isUnlocked(state, 'dark_market');
+  if (!unlocked) return state;
+  if (state.darkMarketCooldown > 0) return state;
   if (state.inventory.length === 0) {
     return { ...state, log: addLog(state.log, ':: DARK_MARKET — NO ITEMS TO SELL') };
   }
-  const raw    = Math.floor(state.inventory.reduce((sum, i) => sum + i.gold, 0) * 0.6);
+  
+  // 🔥 ZÍSKAME BONUS Z MAPY
+  const mapMods = calculateMapModifiers(state);
+  const nodeBonus = mapMods.darkMarketCd || 0; // Očakávame -1800
+  
+  // 🔥 INTEL UPGRADE BONUS
+  const intelBonus = ((state.intelUpgrades?.darkExchange ?? 0) >= 1) ? 1800 : 0;
+  
+  // 🔥 ZÁKLADNÝ COOLDOWN (2 hodiny = 7200 sekúnd)
+  const BASE_CD = 7200;
+  
+  // 🔥 VÝPOČET: základ + nodeBonus (negatívny) - intelBonus
+  let newCooldown = BASE_CD + nodeBonus - intelBonus;
+  newCooldown = Math.max(0, newCooldown);
+  
+  console.log('DARK_MARKET DEBUG:', {
+    BASE_CD,
+    nodeBonus,
+    intelBonus,
+    newCooldown,
+    newCooldownHours: Math.floor(newCooldown / 3600),
+    newCooldownMinutes: Math.floor((newCooldown % 3600) / 60)
+  });
+  
+  const raw = Math.floor(state.inventory.reduce((sum, i) => sum + i.gold, 0) * 0.6);
   const income = applyIncome(state, raw);
-  const darkExchangeReduction = ((state.intelUpgrades?.darkExchange ?? 0) >= 1) ? 1800 : 0;
-  const cd     = Math.max(0, DARK_MARKET_CD - darkExchangeReduction);
-  const cdLabel = DEV_MODE ? `${cd}s [DEV]` : cd < 7200 ? `${Math.floor(cd / 60)}m` : '2H';
+  
   let next = {
     ...state,
-    gold:               income.gold,
-    totalGoldEarned:    income.totalGoldEarned,
-    runGoldEarned:      income.runGoldEarned,
-    inventory:          [],
-    darkMarketCooldown: cd,
-    log: addLog(state.log, `:: DARK_MARKET :: ALL SOLD (60%) :: +${income._earned.toLocaleString()} CR :: CD ${cdLabel}`),
+    gold: income.gold,
+    totalGoldEarned: income.totalGoldEarned,
+    runGoldEarned: income.runGoldEarned,
+    inventory: [],
+    darkMarketCooldown: newCooldown,
+    log: addLog(state.log, `:: DARK_MARKET :: ALL SOLD (60%) :: +${income._earned.toLocaleString()} CR :: CD ${Math.floor(newCooldown / 3600)}h ${Math.floor((newCooldown % 3600) / 60)}m`),
   };
+  
   if (next.gold >= 10000) next = addZero(next, 'gold_10k');
   next = updateDailyChallenge(next, 'SELL_VALUE', income._earned);
   return next;
@@ -1240,61 +1354,95 @@ export function buyUpgrade(state, upgradeKey) {
 }
 
 export function buyIntelUpgrade(state, upgradeKey) {
-	const def = INTEL_UPGRADE_DEFS.find(u => u.key === upgradeKey);
-	if (!def) return state;
-	const currentLevel = (state.intelUpgrades ?? {})[upgradeKey] ?? 0;
-	if (currentLevel >= def.max) return state;
-	const discountMult   = (state.prestigePerks?.INTEL_DISCOUNT) ? 0.8 : 1;
-	const effectiveCost  = Math.round(def.repCost * discountMult);
-	if (state.reputation < effectiveCost) return state;
+  const def = INTEL_UPGRADE_DEFS.find(u => u.key === upgradeKey);
+  if (!def) return state;
+  
+  const currentLevel = (state.intelUpgrades ?? {})[upgradeKey] ?? 0;
+  if (currentLevel >= def.max) return state;
+  
+  // Získame dynamickú cenu (pre serverRacks škálovanú, pre ostatné fixnú)
+  const baseCost = getIntelUpgradeCost(upgradeKey, currentLevel);
+  
+  const discountMult = (state.prestigePerks?.INTEL_DISCOUNT) ? 0.8 : 1;
+  const effectiveCost = Math.round(baseCost * discountMult);
+  
+  if (state.reputation < effectiveCost) return state;
+  
+  return {
+    ...state,
+    reputation: state.reputation - effectiveCost,
+    intelUpgrades: { ...(state.intelUpgrades ?? {}), [upgradeKey]: currentLevel + 1 },
+    feedback: { type: 'UPGRADE', label: def.label, ts: Date.now() },
+    log: addLog(state.log, `:: INTEL: [${def.label}] LVL ${currentLevel + 1} :: -${effectiveCost} REP${discountMult < 1 ? ' [DISCOUNTED]' : ''}`),
+  };
+}
+
+export function severConnection(state, hexId) {
 	return {
 		...state,
-		reputation:    state.reputation - effectiveCost,
-		intelUpgrades: { ...(state.intelUpgrades ?? {}), [upgradeKey]: currentLevel + 1 },
-		feedback: { type: 'UPGRADE', label: def.label, ts: Date.now() },
-		log: addLog(state.log, `:: INTEL: [${def.label}] UNLOCKED :: -${effectiveCost} REP${discountMult < 1 ? ' [DISCOUNTED]' : ''}`),
+		capturedHexes: (state.capturedHexes || []).filter(id => id !== hexId),
+		log: [`:: CONNECTION_SEVERED :: Node ${hexId} released.`, ...(state.log || [])].slice(0, 50)
 	};
 }
 
 export function hireRunner(state, runnerType) {
-  const configs = {
-    streetRunner: { level: 3, baseCost: 300,   requiresPrestige: 0, label: 'STREET_RUNNER'  },
-    dataThief:    { level: 5, baseCost: 800,   requiresPrestige: 0, label: 'DATA_THIEF'     },
-    infiltrator:  { level: 7, baseCost: 2500,  requiresPrestige: 0, label: 'INFILTRATOR'    },
-    fixer:        { level: 9, baseCost: 8000,  requiresPrestige: 0, label: 'FIXER'          },
-    shadowBroker: { level: 1, baseCost: 25000, requiresPrestige: 1, label: 'SHADOW_BROKER'  },
-  };
-  const cfg = configs[runnerType];
-  if (!cfg) return state;
-  if (state.level < cfg.level)                      return state;
-  if ((state.prestige ?? 0) < cfg.requiresPrestige) return state;
-  const count = state.runners[runnerType] ?? 0;
-  if (count >= 5) return state;
+	const configs = {
+		streetRunner: { level: 3, baseCost: 300,   requiresPrestige: 0, label: 'STREET_RUNNER'  },
+		dataThief:    { level: 5, baseCost: 800,   requiresPrestige: 0, label: 'DATA_THIEF'     },
+		infiltrator:  { level: 7, baseCost: 2500,  requiresPrestige: 0, label: 'INFILTRATOR'    },
+		fixer:        { level: 9, baseCost: 8000,  requiresPrestige: 0, label: 'FIXER'          },
+		shadowBroker: { level: 1, baseCost: 25000, requiresPrestige: 1, label: 'SHADOW_BROKER'  },
+	};
 
-  const perksUsed = state.prestigePerksUsed ?? [];
-  let cost      = getRunnerCost(cfg.baseCost, count);
-  let perkId    = null;
-  let perkLabel = null;
+	const cfg = configs[runnerType];
+	if (!cfg) return state;
+	if (state.level < cfg.level) return state;
+	if ((state.prestige ?? 0) < cfg.requiresPrestige) return state;
 
-  if (runnerType === 'streetRunner' && count === 0 && (state.prestige ?? 0) >= 1 && !perksUsed.includes('FREE_STREET_RUNNER')) {
-    cost = 0; perkId = 'FREE_STREET_RUNNER'; perkLabel = 'STREET_RUNNER';
-  } else if (runnerType === 'dataThief' && count === 0 && (state.prestige ?? 0) >= 2 && !perksUsed.includes('FREE_DATA_THIEF')) {
-    cost = 0; perkId = 'FREE_DATA_THIEF'; perkLabel = 'DATA_THIEF';
-  }
+	const currentAgents = state.agents || [];
+	const count = currentAgents.filter(a => a.role === runnerType).length;
+	if (count >= 5) return state;
 
-  if (state.gold < cost) return state;
+	const perksUsed = state.prestigePerksUsed ?? [];
+	let cost = getRunnerCost(cfg.baseCost, count);
+	let perkId = null;
 
-  let next = {
-    ...state,
-    gold:              state.gold - cost,
-    runners:           { ...state.runners, [runnerType]: count + 1 },
-    prestigePerksUsed: perkId ? [...perksUsed, perkId] : perksUsed,
-    log: addLog(state.log, `:: ${cfg.label} HIRED (${count + 1}/5) :: -${cost.toLocaleString()} CR`),
-  };
-  if (perkId) next = { ...next, log: addLog(next.log, `:: PRESTIGE PERK :: First ${perkLabel} recruited free`) };
-  const totalRunners = Object.values(next.runners).reduce((s, n) => s + n, 0);
-  if (totalRunners === 1) next = addZero(next, 'first_runner');
-  return next;
+	if (runnerType === 'streetRunner' && count === 0 && (state.prestige ?? 0) >= 1 && !perksUsed.includes('FREE_STREET_RUNNER')) {
+		cost = 0; perkId = 'FREE_STREET_RUNNER';
+	} else if (runnerType === 'dataThief' && count === 0 && (state.prestige ?? 0) >= 2 && !perksUsed.includes('FREE_DATA_THIEF')) {
+		cost = 0; perkId = 'FREE_DATA_THIEF';
+	}
+
+	if (state.gold < cost) return state;
+
+	const newAgent = {
+		id: `agent_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+		name: generateAgentName(),
+		role: runnerType,
+		level: 1,
+		xp: 0,
+		spec: null,
+		fatigue: 0,
+		status: 'ACTIVE', // ACTIVE, EXHAUSTED
+		loyalty: 70 + Math.floor(Math.random() * 30),
+		stress: 0,
+		missions: 0,
+		createdAt: Date.now()
+	};
+
+	let next = {
+		...state,
+		gold: state.gold - cost,
+		agents: [...currentAgents, newAgent],
+		runners: { ...state.runners, [runnerType]: count + 1 }, // Kompatibilita
+		prestigePerksUsed: perkId ? [...perksUsed, perkId] : perksUsed,
+		log: addLog(state.log, `:: ENLISTED :: ${newAgent.name} [${cfg.label}] :: -${cost.toLocaleString()} CR`),
+	};
+
+	if (perkId) next = { ...next, log: addLog(next.log, `:: PRESTIGE PERK :: First operative recruited free`) };
+	if (next.agents.length === 1) next = addZero(next, 'first_runner');
+	
+	return next;
 }
 
 export function setDistrict(state, district) {
@@ -1306,90 +1454,121 @@ export function setDistrict(state, district) {
   return {
     ...state,
     district: district,
-    log: addLog(state.log, `:: DISTRICT → ${dist.label}`),
+    log: addLog(state.log, `:: DISTRICT → ${dist.name}`),  // 🔥 ZMENENÉ: label → name
   };
 }
 
 // ── PRESTIGE ──────────────────────────────────────────────────────────────────
 
 export function prestige(state) {
-  if (state.level < 10 || (state.runGoldEarned ?? 0) < 100000) return state;
-  
-  // Výpočet bodov podľa celkového zárobku (odmocninová krivka)
-  // 100k = 1 bod, 400k = 2 body, 900k = 3 body, 1.6M = 4 body...
-  const pointsEarned = Math.max(1, Math.floor(Math.sqrt((state.runGoldEarned ?? 0) / 100000)));
-  
-  const newPrestige = (state.prestige ?? 0) + 1;
-  const mult        = 1 + newPrestige * 0.25;
-  
-  let next = {
-    // Reset
-    gold:               0,
-    level:              1,
-    xp:                 0,
-    inventory:          [],
-    upgrades: {
-      ghostProtocol: 0, neuralBoost: 0, signalDampener: 0,
-      stimPack: 0, traceEraser: 0, iceBreaker: 0, darkChannel: 0,
-      voidDrive: 0, proxyServers: 0, quantumEncryption: 0, autoFencer: 0, aiSubroutine: 0, hwOverclock: 0,
-    },
-    runners:            { streetRunner: 0, dataThief: 0, infiltrator: 0, fixer: 0, shadowBroker: state.runners?.shadowBroker ?? 0 },
-    runnerTick:         { streetRunner: 0, dataThief: 0, infiltrator: 0, fixer: 0, shadowBroker: 0 },
-    autoFencerTick:     0,
-    aiSubroutineTick:   0,
-    heat:               0,
-    stamina:            100,
-    layLowActive:       false,
-    layLowTimer:        0,
-    layLowCooldown:     0,
-    bustedLockout:      0,
-    darkMarketCooldown: 0,
-    comboCount:         0,
-    heatSpikeTimer:     0,
-    barterCooldown:     0,
-    raidActive:         false,
-    raidTimer:          0,
-    nextRaidIn:         randomRaidInterval(),
-    bountyActive:       false,
-    feedback:           null,
-    dailyFeedback:      null,
-    lastTickTime:       Date.now(),
-    runGoldEarned:       0,
-    district:            'Z4',
-    siphonsWithoutBust:  0,
-    everBustedThisRun:   false,
-    achievementFeedback: null,
-    prestigePerksUsed:   [],
-    // Keep
-    encKeys:            state.encKeys ?? [],
-    prestige:           newPrestige,
-    prestigeMultiplier: mult,
-    reputation:         state.reputation,
-    totalGoldEarned:    state.totalGoldEarned ?? 0,
-    offlineAccrualCap:  state.offlineAccrualCap,
-    intelUpgrades:      state.intelUpgrades ?? {},
-    zeroMessages:       state.zeroMessages ?? [],
-    achievements:       state.achievements ?? {},
-    prestigePerks:      state.prestigePerks ?? {},
-    prestigePoints:     (state.prestigePoints ?? 0) + pointsEarned,
-    activeProtocol:     state.activeProtocol ?? 'NONE',
-    log: addLog([], `>> PRESTIGE ACTIVATED :: RUN #${newPrestige} :: MULTIPLIER x${mult.toFixed(2)} :: +${pointsEarned} PERK POINT(S)`),
-  };
-  next = addZero(next, 'first_prestige');
-  return next;
+	if (state.level < 10 || (state.runGoldEarned ?? 0) < 100000) return state;
+	
+	// Výpočet bodov (odmocninová krivka)
+	const pointsEarned = Math.max(1, Math.floor(Math.sqrt((state.runGoldEarned ?? 0) / 100000)));
+	
+	const newPrestige = (state.prestige ?? 0) + 1;
+	const mult = 1 + newPrestige * 0.25;
+	
+	// DÔLEŽITÉ: Musíme sčítať celkový zárobok predtým, než resetujeme ten aktuálny
+	const updatedTotalGold = (state.totalGoldEarned ?? 0) + (state.runGoldEarned ?? 0);
+
+	let next = {
+		// --- RESET CURRENT RUN ---
+		gold: 0,
+		level: 1,
+		xp: 0,
+		inventory: [],
+		agents: [], // Všetci agenti sú prepustení (čistý stôl)
+		upgrades: {
+			ghostProtocol: 0, neuralBoost: 0, signalDampener: 0,
+			stimPack: 0, traceEraser: 0, iceBreaker: 0, darkChannel: 0,
+			voidDrive: 0, proxyServers: 0, quantumEncryption: 0, 
+			autoFencer: 0, aiSubroutine: 0, hwOverclock: 0,
+		},
+		runners: { 
+			streetRunner: 0, dataThief: 0, infiltrator: 0, fixer: 0, 
+			shadowBroker: state.runners?.shadowBroker ?? 0 // ShadowBroker ti ostáva, ak ho už máš
+		},
+		runnerTick: { streetRunner: 0, dataThief: 0, infiltrator: 0, fixer: 0, shadowBroker: 0 },
+		autoFencerTick: 0,
+		aiSubroutineTick: 0,
+		heat: 0,
+		stamina: 100,
+		layLowActive: false,
+		layLowTimer: 0,
+		layLowCooldown: 0,
+		bustedLockout: 0,
+		darkMarketCooldown: 0,
+		comboCount: 0,
+		heatSpikeTimer: 0,
+		barterCooldown: 0,
+		raidActive: false,
+		raidTimer: 0,
+		nextRaidIn: typeof randomRaidInterval === 'function' ? randomRaidInterval() : 600,
+		bountyActive: false,
+		feedback: null,
+		dailyFeedback: null,
+		lastTickTime: Date.now(),
+		runGoldEarned: 0,
+		district: 'Z4',
+		siphonsWithoutBust: 0,
+		everBustedThisRun: false,
+		achievementFeedback: null,
+		offlineReport: null,
+		prestigePerksUsed: [],
+		
+		// --- RESET MAP (Sieť sa musí znova hacknúť) ---
+		capturedHexes: ['western_warpgate'], // Návrat do štartovacieho bodu
+		nodeStability: {},
+		activeMissions: [],
+		reclaiming: {},
+
+		// --- KEEP PERMANENT PROGRESS ---
+		encKeys: state.encKeys ?? [],
+		prestige: newPrestige,
+		prestigeMultiplier: mult,
+		reputation: state.reputation,
+		totalGoldEarned: updatedTotalGold, // Opravená hodnota
+		offlineAccrualCap: state.offlineAccrualCap,
+		intelUpgrades: state.intelUpgrades ?? {},
+		zeroMessages: state.zeroMessages ?? [],
+		achievements: state.achievements ?? {},
+		prestigePerks: state.prestigePerks ?? {},
+		prestigePoints: (state.prestigePoints ?? 0) + pointsEarned,
+		activeProtocol: state.activeProtocol ?? 'NONE',
+		storyFlags: state.storyFlags ?? {}, // Príbehové vlajky nesmieme mazať
+		
+		log: addLog([], `>> PRESTIGE ACTIVATED :: RUN #${newPrestige} :: MULTIPLIER x${mult.toFixed(2)} :: +${pointsEarned} PERK POINT(S)`),
+	};
+
+	// Ak máš funkciu na správy od Zero, vyvolaj ju
+	if (typeof addZero === 'function') {
+		next = addZero(next, 'first_prestige');
+	}
+	
+	return next;
 }
 
 export function buyPrestigePerk(state, perkId) {
 	const def = PRESTIGE_PERK_DEFS.find(d => d.id === perkId);
 	if (!def) return state;
-	const cost = def.cost ?? 1; // Pridaj túto premennú
-	if ((state.prestigePoints ?? 0) < cost) return state; // Zmeň < 1 na < cost
-	if ((state.prestigePerks ?? {})[perkId]) return state;
-	if ((def.reqLevel ?? 1) > (state.level ?? 1)) return state;
+
+	const cost = def.cost ?? 1;
+	const currentPoints = state.prestigePoints ?? 0;
+	const alreadyOwned = (state.prestigePerks ?? {})[perkId];
+	const levelReqMet = (state.level ?? 1) >= (def.reqLevel ?? 1);
+
+	if (currentPoints < cost || alreadyOwned || !levelReqMet) {
+		return state;
+	}
+
 	return {
 		...state,
-		prestigePoints: (state.prestigePoints ?? 0) - cost, // Zmeň - 1 na - cost
-		prestigePerks:  { ...(state.prestigePerks ?? {}), [perkId]: true },
+		prestigePoints: currentPoints - cost,
+		prestigePerks: { 
+			...(state.prestigePerks ?? {}), 
+			[perkId]: true 
+		},
 		log: addLog(state.log, `:: PRESTIGE PERK ACTIVATED :: ${perkId} :: ${def.effect}`),
 	};
 }
@@ -1473,393 +1652,617 @@ export function importSave(encoded) {
 // ── GAME TICK (1s interval) ───────────────────────────────────────────────────
 
 export function tick(state) {
-  let next = { ...state };
-  const nowMs = Date.now();
+	let next = { ...state };
+	const nowMs = Date.now();
 
-  // ── 1. MISIE / CHECK COMPLETED INFILTRATIONS ─────────────────────
-  next = checkMissions(next);
+	// ── AFK / IDLE DETECTION ──
+	const IDLE_TIMEOUT = DEV_MODE ? 60000 : 1200000; // 20 minút (1 min v DEV)
+	const IDLE_PROMPT_DURATION = DEV_MODE ? 10000 : 60000; // 60 sekúnd výzva
+	const timeSinceLastAction = nowMs - (next.lastInteractionTime || nowMs);
 
-  // ── 2. LOG BATCH EXPIRY (3 sekundy) ────────────────────────────────
-  if ((next.logBatch ?? null) && (nowMs - next.logBatch.ts) > 3000) {
-    next = { ...next, logBatch: null };
-  }
+	// 1. Spustenie výzvy "Si tu?"
+	if (!next.isIdle && !next.idlePromptActive && timeSinceLastAction > IDLE_TIMEOUT) {
+		next = { ...next, idlePromptActive: true, idlePromptTimestamp: nowMs };
+	}
 
-  // ── 3. DAILY CHALLENGE RESET (každých 24h) ─────────────────────────
-  const dc = next.dailyChallenge;
-  if (!dc || !dc.type || (nowMs - (dc.lastReset ?? 0)) >= 86400000) {
-    next = { ...next, dailyChallenge: pickNewChallenge(nowMs) };
-  }
+	// 2. Prepadnutie výzvy -> Offline Režim
+	if (next.idlePromptActive && (nowMs - (next.idlePromptTimestamp || 0)) > IDLE_PROMPT_DURATION) {
+		const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+		next = {
+			...next,
+			idlePromptActive: false,
+			isIdle: true,
+			log: [`[${t}] :: NO RESPONSE :: ENTERING POWER-SAVING OFFLINE MODE`, ...(next.log || [])].slice(0, 50)
+		};
+	}
 
-  // ── STAMINA REGEN + PROTOCOL MULTIPLIER ────────────────────────────
+	// ── 1. MISIE / CHECK COMPLETED INFILTRATIONS ─────────────────────
+	next = checkMissions(next);
+
+	// ── 2. LOG BATCH EXPIRY (3 sekundy) ────────────────────────────────
+	if ((next.logBatch ?? null) && (nowMs - next.logBatch.ts) > 3000) {
+		next = { ...next, logBatch: null };
+	}
+
+	// ── 3. DAILY CHALLENGE RESET (každých 24h) ─────────────────────────
+	const dc = next.dailyChallenge;
+	if (!dc || !dc.type || (nowMs - (dc.lastReset ?? 0)) >= 86400000) {
+		next = { ...next, dailyChallenge: pickNewChallenge(nowMs) };
+	}
+
+	// ── STAMINA REGEN ────────────────────────────────────────────────
   const effectiveMaxStamina = 100 + (next.upgrades.neuralBoost ?? 0) * 10;
   const baseRegen = 2 + (next.upgrades.stimPack ?? 0) * 0.5;
   const protoStaminaMult = PROTOCOL_DEFS[next.activeProtocol ?? 'NONE']?.staminaRegenMult ?? 1;
   const effectiveRegen = (next.layLowActive ? baseRegen + 2 : baseRegen) * protoStaminaMult;
+  next = { ...next, stamina: Math.min(effectiveMaxStamina, next.stamina + effectiveRegen) };
 
-  next = {
-    ...next,
-    stamina: Math.min(effectiveMaxStamina, next.stamina + effectiveRegen)
-  };
-
-  // ── BUSTED LOCKOUT ─────────────────────────────────────────────────
+	// ── BUSTED LOCKOUT ─────────────────────────────────────────────────
   if (next.bustedLockout > 0) {
     return { ...next, bustedLockout: next.bustedLockout - 1, lastTickTime: nowMs };
+}
+
+  // --- NEURAL SIM (Tréning) ---
+  const trainees = (next.agents || []).filter(a => a.status === 'TRAINING');
+  if (trainees.length > 0) {
+    const trainingCost = trainees.length * 15; // Znížená cena: 15 CR per agent
+    if (next.gold >= trainingCost) {
+      next.gold -= trainingCost;
+      next.agents = next.agents.map(a => {
+        if (a.status === 'TRAINING') {
+          let newXp = (a.xp || 0) + 2; // +2 XP za tick (spomalené)
+          let newLevel = a.level || 1;
+          const xpNeeded = newLevel * 1000;
+          
+          // LEVEL UP LOGIKA
+          if (newXp >= xpNeeded) {
+            newXp -= xpNeeded; // Zvyšok XP sa prenesie do ďalšieho levelu
+            newLevel += 1;
+            next.log = addLog(next.log, `:: LEVEL UP :: Agent ${a.name} reached LVL ${newLevel}!`);
+          }
+          
+          return { ...a, xp: newXp, level: newLevel };
+        }
+        return a;
+      });
+    } else {
+      next.log = addLog(next.log, '!! WARNING !! Insufficient funds for Neural Sim. Training halted.');
+      next.agents = next.agents.map(a => a.status === 'TRAINING' ? { ...a, status: 'ACTIVE' } : a);
+    }
   }
 
-  // ── HEAT MANAGEMENT ────────────────────────────────────────────────
-  if ((next.heatSpikeTimer ?? 0) > 0) {
-    next = { ...next, heatSpikeTimer: next.heatSpikeTimer - 1 };
-    if (next.layLowActive) {
-      next = { ...next, heat: Math.max(0, parseFloat((next.heat - 2).toFixed(2))) };
-    } else {
-      next = { ...next, heat: Math.min(100, parseFloat((next.heat + 1.5).toFixed(2))) };
-    }
-  } else {
-    const distDecayBase = DISTRICTS[next.district]?.heatDecayBase ?? 0.2;
-    const traceBonus = (next.upgrades.traceEraser ?? 0) * 0.1;
-    const corpMoleMult = (next.intelUpgrades?.corpMole ?? 0) >= 1 ? 2 : 1;
-    const mapHeatBonus = calculateMapModifiers(next).heatDecayBonus ?? 0;
-    const heatDecay = next.layLowActive
-      ? 2
-      : (distDecayBase + traceBonus + mapHeatBonus) * corpMoleMult;
+  // ── OVERCLOCK COOLDOWN TICK ──
+  if (next.overclockCooldown > 0) {
+    next.overclockCooldown = Math.max(0, next.overclockCooldown - 1);
+  }
 
-    next = { ...next, heat: Math.max(0, parseFloat((next.heat - heatDecay).toFixed(2))) };
+  // ═══════════════════════════════════════════════════════════════
+  // ── SYSTEM_OVERRIDE_PROTOCOL (OVERCLOCK & OVERLOAD) ──
+  // ═══════════════════════════════════════════════════════════════
+  
+  // 1. Výpočet Bandwidth a Overloadu
+  const usedBw = (next.capturedHexes?.length || 0) + (next.activeMissions?.length || 0);
+  const overclockBonus = next.overclockActive ? 2 : 0; // Force inject +2 BW
+  const maxBw = 1 + (next.intelUpgrades?.serverRacks || 0) + overclockBonus;
+  const overload = Math.max(0, usedBw - maxBw);
+
+  // 2. Aplikácia penalizácií (Heat Leak & Decay Multiplier)
+  if (overload > 0) {
+      // HEAT_LEAK: +0.8/s per overload level
+      next.heat = Math.min(100, (next.heat || 0) + (overload * 0.8));
+  }
+
+    // ── NODE DECAY (JEDNOTNÝ SYSTÉM) ──
+    // Decay Multiplier: +300% per overload level (Base 1 + 3*overload)
+    // Základný decay je 0.08.
+    
+  let decayChanged = false;
+  let decayStability = { ...(next.nodeStability || {}) };
+  let decayCaptured = [...(next.capturedHexes || [])];
+  let decayLogs = [...(next.log || [])];
+  const decayTime = new Date().toLocaleTimeString('en-US', { hour12: false });
+
+  // Výpočet globálneho multiplikátora decayu
+  const overloadDecayMultiplier = 1 + (overload * 3); 
+
+  decayCaptured.forEach(id => {
+      if (id !== 'western_warpgate') {
+          let s = decayStability[id] ?? 100;
+          
+          // Upgrades (Hardened Cables znižujú decay)
+          const hardenedBonus = (next.intelUpgrades?.hardenedCables || 0) * 0.2;
+          
+          // Konečný vzorec: Base * (1 - hardening) * OverloadMult
+          // Ak je overload 0, multiplier je 1 (normálny decay).
+          // Ak je overload 1, multiplier je 4 (300% rýchlejší decay).
+          const decayRate = 0.08 * (1 - hardenedBonus) * overloadDecayMultiplier;
+          
+          s -= decayRate;
+
+          if (s <= 0) {
+              decayCaptured = decayCaptured.filter(c => c !== id);
+              delete decayStability[id];
+              if (next.reclaiming) delete next.reclaiming[id];
+              decayLogs = [`[${decayTime}] !!! CONNECTION_LOST :: ${id} burned out (Overload: ${overload}).`, ...decayLogs].slice(0, 50);
+              decayChanged = true;
+          } else {
+              decayStability[id] = s;
+              decayChanged = true;
+          }
+      }
+  });
+
+  if (decayChanged) {
+      next = { ...next, nodeStability: decayStability, capturedHexes: decayCaptured, log: decayLogs };
+  }
+
+  // ── HEAT MANAGEMENT (Natural Decay) ────────────────────────────────────────
+  // Toto je prirodzený chladok (nie decay uzlov), ak nie je spike
+  if ((next.heatSpikeTimer ?? 0) > 0) {
+      next = { ...next, heatSpikeTimer: next.heatSpikeTimer - 1 };
+      if (next.layLowActive) {
+          next = { ...next, heat: Math.max(0, parseFloat((next.heat - 2).toFixed(2))) };
+      } else {
+          next = { ...next, heat: Math.min(100, parseFloat((next.heat + 1.5).toFixed(2))) };
+      }
+  } else {
+      const distDecayBase = DISTRICTS[next.district]?.heatDecayBase ?? 0.2;
+      const traceBonus = (next.upgrades.traceEraser ?? 0) * 0.1;
+      const corpMoleMult = (next.intelUpgrades?.corpMole ?? 0) >= 1 ? 2 : 1;
+      const mapHeatBonus = calculateMapModifiers(next).heatDecayBonus ?? 0;
+      const heatDecay = next.layLowActive
+          ? 2
+          : (distDecayBase + traceBonus + mapHeatBonus) * corpMoleMult;
+
+      next = { ...next, heat: Math.max(0, parseFloat((next.heat - heatDecay).toFixed(2))) };
   }
 
   // ── DAILY CHALLENGE: SURVIVE_HEAT ──────────────────────────────────
   if (next.heat >= 80) {
-    next = updateDailyChallenge(next, 'SURVIVE_HEAT', next.heat);
+      next = updateDailyChallenge(next, 'SURVIVE_HEAT', next.heat);
   }
 
   // ── BOUNTY SYSTEM ──────────────────────────────────────────────────
   if (!(next.bountyActive ?? false) && next.heat >= 80) {
-    next = {
-      ...next,
-      bountyActive: true,
-      log: addLog(next.log, ':: BOUNTY ISSUED :: Aether-Biotech has flagged your signature')
-    };
-    next = addZero(next, 'bounty');
+      next = {
+          ...next, bountyActive: true,
+          log: addLog(next.log, ':: BOUNTY ISSUED :: Aether-Biotech has flagged your signature')
+      };
+      next = addZero(next, 'bounty');
   } else if ((next.bountyActive ?? false) && next.heat < 40) {
-    next = {
-      ...next,
-      bountyActive: false,
-      log: addLog(next.log, ':: BOUNTY CLEARED :: signature lost')
-    };
-  }
-
-  // ── ITEM COOLDOWNS (2x rýchlejšie pri LAY LOW) ─────────────────────
-  const cdTick = next.layLowActive ? 2 : 1;
-  next = {
-    ...next,
-    inventory: next.inventory.map(item => {
-      if (!item.isHot) return item;
-      const rem = item.cooldownRemaining - cdTick;
-      return { ...item, cooldownRemaining: Math.max(0, rem), isHot: rem > 0 };
-    })
-  };
-
-  // ── DEFINÍCIA runnerTick FUNKCIE ───────────────────────────────────
-  function runnerTick(cur, runnerKey, crPerCycle, cycle, heatPerCycle) {
-    const count = cur.runners?.[runnerKey] ?? 0;
-    let newTick = (cur.runnerTick?.[runnerKey] ?? 0) + 1;
-
-    if (count === 0 || newTick < cycle) {
-      return {
-        ...cur,
-        runnerTick: { ...(cur.runnerTick ?? {}), [runnerKey]: newTick }
-      };
-    }
-
-    // Plná logika runnera (z tvojho pôvodného kódu)
-    const spec = (cur.runnerSpec ?? {})[runnerKey];
-    const synergyMult = count >= 5 ? 1.20 : 1;
-    const guildMult = (cur.prestigePerks ?? {}).GUILD_MASTER ? 1.25 : 1;
-    const specGoldMult = spec === 'GREEDY' ? 1.5 : 1;
-    const specHeatMult = spec === 'SHADOW' ? 0.5 : 1;
-
-    const income = applyIncome(cur, count * crPerCycle * synergyMult * guildMult * specGoldMult);
-    const stealthMult = 1 - (cur.upgrades?.runnerStealth ?? 0) * 0.25;
-    const heat = DEV_MODE ? 0 : count * heatPerCycle * specHeatMult * stealthMult;
-
-    let result = {
-      ...cur,
-      gold: income.gold,
-      totalGoldEarned: income.totalGoldEarned,
-      runGoldEarned: income.runGoldEarned,
-      heat: Math.min(100, cur.heat + heat),
-      runnerTick: { ...(cur.runnerTick ?? {}), [runnerKey]: 0 },
-      log: addLog(cur.log, `:: ${runnerKey.toUpperCase().replace('RUNNER','_RUNNER').replace('BROKER','_BROKER')} x${count} :: +${income._earned.toLocaleString()} CR${heat > 0 ? ` :: HEAT +${heat}` : ''}${spec && spec !== 'PENDING' ? ` [${spec}]` : ''}`),
-    };
-
-    if (!DEV_MODE) result = applyBustedCheck(result);
-
-    // Runner XP
-    const prevXp = (cur.runnerXp ?? {})[runnerKey] ?? 0;
-    if (prevXp < 100) {
-      const newXp = prevXp + 1;
-      if (newXp >= 100 && !((cur.runnerSpec ?? {})[runnerKey])) {
-        result = {
-          ...result,
-          runnerXp: { ...(result.runnerXp ?? {}), [runnerKey]: 100 },
-          runnerSpec: { ...(result.runnerSpec ?? {}), [runnerKey]: 'PENDING' },
-          log: addLog(result.log, `:: RUNNER LVL UP :: ${runnerKey.toUpperCase()} :: SPECIALIZATION AVAILABLE`),
-        };
-      } else {
-        result = { ...result, runnerXp: { ...(result.runnerXp ?? {}), [runnerKey]: newXp } };
-      }
-    }
-
-    return result;
-  }
-
-  // ── RUNNER TICK SYSTEM (s HW_OVERCLOCK) ───────────────────────────
-  const hwLvl = next.upgrades.hwOverclock ?? 0;
-  const hwSpeedMult = Math.pow(0.85, hwLvl);
-  const hwHeatMult = 1 + hwLvl * 0.5;
-
-  function adjCycle(base) {
-    return Math.max(1, Math.round(base * hwSpeedMult));
-  }
-
-  next = runnerTick(next, 'streetRunner', 2,   adjCycle(RUNNER_SR_CYCLE), 1 * hwHeatMult);
-  next = runnerTick(next, 'dataThief',    8,   adjCycle(RUNNER_DT_CYCLE), 2 * hwHeatMult);
-  next = runnerTick(next, 'infiltrator',  35,  adjCycle(RUNNER_IF_CYCLE), 3 * hwHeatMult);
-  next = runnerTick(next, 'fixer',        150, adjCycle(RUNNER_FX_CYCLE), 1 * hwHeatMult);
-  next = runnerTick(next, 'shadowBroker', 600, adjCycle(RUNNER_SB_CYCLE), 0);
-
-  // ── MAP PASSIVE GOLD ───────────────────────────────────────────────
-  const mapPassiveGold = calculateMapModifiers(next).passiveGold;
-  if (mapPassiveGold > 0) {
-    const inc = applyIncome(next, mapPassiveGold);
-    next = {
-      ...next,
-      gold: inc.gold,
-      totalGoldEarned: inc.totalGoldEarned,
-      runGoldEarned: inc.runGoldEarned
-    };
-  }
-
-  // ── AUTO FENCER ────────────────────────────────────────────────────
-  if (next.upgrades.autoFencer >= 1) {
-    const fencerCd = (next.prestigePerks ?? {}).FAST_FENCE ? 15 : 30;
-    const newAutoTick = (next.autoFencerTick ?? 0) + 1;
-
-    if (newAutoTick >= fencerCd) {
-      const cold = next.inventory.filter(i => !i.isHot);
-      if (cold.length > 0) {
-        const income = applyIncome(next, cold.reduce((sum, i) => sum + i.gold, 0));
-        next = {
-          ...next,
-          gold: income.gold,
-          totalGoldEarned: income.totalGoldEarned,
-          runGoldEarned: income.runGoldEarned,
-          inventory: next.inventory.filter(i => i.isHot),
-          autoFencerTick: 0,
-          log: addLog(next.log, `:: AUTO_FENCER :: SOLD ${cold.length} ITEM(S) :: +${income._earned.toLocaleString()} CR`)
-        };
-      } else {
-        next = { ...next, autoFencerTick: 0 };
-      }
-    } else {
-      next = { ...next, autoFencerTick: newAutoTick };
-    }
-  }
-
-  // ── COOLDOWN TICKY ─────────────────────────────────────────────────
-  if (next.darkMarketCooldown > 0) next = { ...next, darkMarketCooldown: next.darkMarketCooldown - 1 };
-  if ((next.barterCooldown ?? 0) > 0) next = { ...next, barterCooldown: next.barterCooldown - 1 };
-
-  // ── LAY LOW TIMER ──────────────────────────────────────────────────
-  if (next.layLowActive) {
-    const remaining = next.layLowTimer - 1;
-    if (remaining <= 0) {
       next = {
-        ...next,
-        layLowActive: false,
-        layLowTimer: 0,
-        layLowCooldown: 60,
-        log: addLog(next.log, ':: LAY_LOW COMPLETE :: cooldowns accelerated')
+          ...next, bountyActive: false,
+          log: addLog(next.log, ':: BOUNTY CLEARED :: signature lost')
       };
-    } else {
-      next = { ...next, layLowTimer: remaining };
-    }
-  } else if (next.layLowCooldown > 0) {
-    next = { ...next, layLowCooldown: next.layLowCooldown - 1 };
   }
 
-  // ── RAID SYSTEM ────────────────────────────────────────────────────
-  if (!(next.raidActive ?? false)) {
-    const newNextRaid = ((next.nextRaidIn ?? randomRaidInterval()) - 1);
-    if (newNextRaid <= 0) {
-      const cdWasActive = (next.layLowCooldown ?? 0) > 0;
-      let raidLog = addLog(next.log, `:: POLICE RAID INCOMING :: LAY LOW IN ${RAID_DURATION}s OR LOSE 30% CR`);
-      if (cdWasActive) raidLog = addLog(raidLog, ':: RAID ALERT :: LAY_LOW cooldown cleared');
-
-      next = {
-        ...next,
-        raidActive: true,
-        raidTimer: RAID_DURATION,
-        nextRaidIn: randomRaidInterval(),
-        layLowCooldown: 0,
-        layLowActive: false,
-        layLowTimer: 0,
-        log: raidLog
-      };
-    } else {
-      next = { ...next, nextRaidIn: newNextRaid };
+  // ── NODE RECLAIM LOGIC (Útok systému - len ak sme IDLE) ──
+  // Decay sme už vyriešili vyššie, tu riešime len Reclaim (útoky)
+ if (!next.isIdle) {
+    let reclaiming = { ...(next.reclaiming || {}) };
+    let captured = [...(next.capturedHexes || [])];
+    let stability = { ...(next.nodeStability || {}) };
+    let logs = [...(next.log || [])];
+    let changed = false;
+    
+    // 1. Reclaim (Útok systému)
+    if (captured.length > 1 && Math.random() < 0.01 + (next.heat / 5000)) {
+        const target = captured[Math.floor(Math.random() * captured.length)];
+        if (target !== 'western_warpgate' && !reclaiming[target]) {
+            reclaiming[target] = { progress: 0, stage: 'SCAN' };
+            logs = [`[!] ALERT :: INTRUSION_DETECTED :: Node ${target}`, ...logs].slice(0, 50);
+            changed = true;
+        }
     }
-  } else {
-    const newTimer = (next.raidTimer ?? 0) - 1;
-    if (newTimer <= 0) {
-      const raidReduction = Math.min(0.25, calculateMapModifiers(next).raidPenaltyReduction);
-      const goldLost = Math.floor(next.gold * Math.max(0.05, 0.30 - raidReduction));
-      next = {
-        ...next,
-        raidActive: false,
-        raidTimer: 0,
-        nextRaidIn: randomRaidInterval(),
-        gold: Math.max(0, next.gold - goldLost),
-        log: addLog(next.log, `:: RAID :: CREDITS SEIZED :: -${goldLost.toLocaleString()} CR`)
-      };
-    } else {
-      next = { ...next, raidTimer: newTimer };
-    }
-  }
 
-  // ── BETRAYAL ───────────────────────────────────────────────────────
-  const totalRunners = Object.values(next.runners ?? {}).reduce((sum, c) => sum + c, 0);
-  if (next.heat >= 70 && totalRunners > 0) {
-    const perRunnerChance = DEV_MODE ? 0.005 : 0.0005;
-    if (Math.random() < totalRunners * perRunnerChance) {
-      const types = Object.entries(next.runners ?? {}).filter(([, c]) => c > 0);
-      let r = Math.random() * types.reduce((sum, [, c]) => sum + c, 0);
-      let betrayer = types[0][0];
-      for (const [type, c] of types) { r -= c; if (r <= 0) { betrayer = type; break; } }
+    Object.keys(reclaiming).forEach(id => {
+        let r = { ...reclaiming[id] };
+        
+        if (r.stage === 'LAST_STAND') {
+            r.timer -= 1;
+            if (r.timer <= 0) {
+                captured = captured.filter(c => c !== id);
+                delete reclaiming[id];
+                delete stability[id];
+                next.heat = Math.min(100, (next.heat || 0) + 15);
+                logs = [`[!!!] TERMINATED :: OVERRIDE FAILED ON ${id}. HEAT SPIKE!`, ...logs].slice(0, 50);
+            } else {
+                reclaiming[id] = r;
+            }
+            changed = true;
+        } else {
+            r.progress += 2; 
+            if (r.progress >= 100) {
+                if (r.stage === 'SCAN') {
+                    reclaiming[id] = { progress: 0, stage: 'BREACH' };
+                    logs = [`[!!] CRITICAL :: FIREWALL_BREACH :: ${id}`, ...logs].slice(0, 50);
+                } else if (r.stage === 'BREACH') {
+                    reclaiming[id] = { progress: 100, stage: 'LAST_STAND', timer: 5 };
+                    logs = [`[!!!] EMERGENCY :: MANUAL OVERRIDE REQUIRED ON ${id}`, ...logs].slice(0, 50);
+                }
+            } else {
+                reclaiming[id] = r;
+            }
+            changed = true;
+        }
+    });
+    
+    // POZNÁMKA: Sekcia "2. Decay" bola odstránená, pretože ju riešime vyššie globálne s overload multiplikátorom.
 
-      const goldLost = Math.floor(next.gold * 0.15);
-      next = {
-        ...next,
-        gold: Math.max(0, next.gold - goldLost),
-        heat: Math.min(100, next.heat + 20),
-        log: addLog(next.log, `:: BETRAYAL :: ${RUNNER_LABELS[betrayer] ?? betrayer.toUpperCase()} sold your location :: -${goldLost.toLocaleString()} CR :: HEAT +20`),
-      };
-      next = applyBustedCheck(next);
-      next = addZero(next, 'betrayal');
+    if (changed) {
+        next = { ...next, reclaiming, capturedHexes: captured, nodeStability: stability, log: logs };
     }
-  }
+}
 
-  // ── AI_SUBROUTINE ──────────────────────────────────────────────────
-  if ((next.upgrades.aiSubroutine ?? 0) >= 1) {
-    const newAiTick = (next.aiSubroutineTick ?? 0) + 1;
-    if (newAiTick >= AI_SUBROUTINE_CYCLE) {
-      next = {
-        ...next,
-        heat: Math.max(0, next.heat - 25),
-        aiSubroutineTick: 0,
-        log: addLog(next.log, ':: AI_SUBROUTINE :: heat suppressed :: -25 HEAT')
-      };
-    } else {
-      next = { ...next, aiSubroutineTick: newAiTick };
-    }
-  }
+	// ── ITEM COOLDOWNS (2x rýchlejšie pri LAY LOW) ─────────────────────
+	const cdTick = next.layLowActive ? 2 : 1;
+	next = {
+		...next,
+		inventory: next.inventory.map(item => {
+			if (!item.isHot) return item;
+			const rem = item.cooldownRemaining - cdTick;
+			return { ...item, cooldownRemaining: Math.max(0, rem), isHot: rem > 0 };
+		})
+	};
 
-  // ── SYSTEM SCAN ────────────────────────────────────────────────────
-  if (!(next.systemScan?.active ?? false)) {
-    const nextIn = ((next.systemScan?.nextIn) ?? randomScanInterval()) - 1;
-    if (nextIn <= 0) {
-      next = {
-        ...next,
-        systemScan: { active: true, timer: SCAN_DURATION, nextIn: randomScanInterval() },
-        log: addLog(next.log, '!! SYSTEM_SCAN DETECTED :: PURGE LOCAL LOGS IMMEDIATELY'),
-      };
-    } else {
-      next = { ...next, systemScan: { ...(next.systemScan ?? {}), active: false, nextIn } };
-    }
-  } else {
-    const scanTimer = (next.systemScan.timer ?? 0) - 1;
-    if (scanTimer <= 0) {
-      const goldLost = Math.floor(next.gold * 0.20);
-      next = {
-        ...next,
-        gold: Math.max(0, next.gold - goldLost),
-        heat: Math.min(100, next.heat + 40),
-        systemScan: { active: false, timer: 0, nextIn: randomScanInterval() },
-        log: addLog(next.log, `:: SCAN COMPLETE :: TRACED :: -${goldLost.toLocaleString()} CR :: HEAT +40`),
-      };
-      next = applyBustedCheck(next);
-    } else {
-      next = { ...next, systemScan: { ...next.systemScan, timer: scanTimer } };
-    }
-  }
+	const idleMult = next.isIdle ? 0.6 : 1.0; // V offline režime len 60% zisku
 
-  return { ...next, lastTickTime: nowMs };
+	// ── 1. AGENT TICK SYSTEM (Zárobok, Únava, HW Overclock) ────────────────
+	const hwLvl = next.upgrades?.hwOverclock ?? 0;
+	const hwSpeedMult = Math.pow(0.85, hwLvl);
+	const hwHeatMult = 1 + hwLvl * 0.5;
+
+	const cycles = {
+		streetRunner: Math.max(1, Math.round((DEV_MODE ? 5 : 30) * hwSpeedMult)),
+		dataThief:    Math.max(1, Math.round((DEV_MODE ? 10 : 120) * hwSpeedMult)),
+		infiltrator:  Math.max(1, Math.round((DEV_MODE ? 15 : 900) * hwSpeedMult)),
+		fixer:        Math.max(1, Math.round((DEV_MODE ? 20 : 3600) * hwSpeedMult)),
+		shadowBroker: Math.max(1, Math.round((DEV_MODE ? 30 : 7200) * hwSpeedMult))
+	};
+	
+	const basePayouts = { streetRunner: 2, dataThief: 8, infiltrator: 35, fixer: 150, shadowBroker: 600 };
+	const baseHeats = { streetRunner: 1, dataThief: 2, infiltrator: 3, fixer: 1, shadowBroker: 0 };
+
+	let totalAgentIncome = 0;
+	let totalAgentHeat = 0;
+
+	// Uistíme sa, že agents existujú (spätná kompatibilita)
+	if (!next.agents) next.agents = [];
+
+	next.agents = next.agents.map(agent => {
+		let updated = { ...agent };
+
+		// Zotavovanie vyčerpaných agentov
+		if (updated.status === 'EXHAUSTED') {
+			updated.fatigue -= (DEV_MODE ? 5 : 1);
+			if (updated.fatigue <= 0) {
+				updated.fatigue = 0;
+				updated.status = 'ACTIVE';
+				next.log = addLog(next.log, `:: AGENT RECOVERED :: ${updated.name} is back online.`);
+			}
+			return updated; // Unavený agent nepracuje
+		}
+
+		// Aktívni agenti pracujú
+		if (updated.status === 'ACTIVE') {
+			updated.tickCount = (updated.tickCount || 0) + 1;
+			const targetCycle = cycles[updated.role] || 30;
+
+			if (updated.tickCount >= targetCycle) {
+				updated.tickCount = 0; // Reset cyklu
+				
+				// Multiplikátory
+				const roleCount = next.agents.filter(a => a.role === updated.role && a.status === 'ACTIVE').length;
+				const synergyMult = roleCount >= 5 ? 1.20 : 1;
+				const guildMult = (next.prestigePerks ?? {}).GUILD_MASTER ? 1.25 : 1;
+				const specGoldMult = updated.spec === 'GREEDY' ? 1.5 : 1;
+				const specHeatMult = updated.spec === 'SHADOW' ? 0.5 : 1;
+				const stealthMult = 1 - (next.upgrades?.runnerStealth ?? 0) * 0.25;
+
+				// Zárobok a Heat per Agent
+				totalAgentIncome += basePayouts[updated.role] * synergyMult * guildMult * specGoldMult * idleMult;
+				totalAgentHeat += baseHeats[updated.role] * hwHeatMult * specHeatMult * stealthMult;
+
+				// Únava a XP
+				updated.fatigue += 15; // +15% fatigue per cycle
+				if (updated.fatigue >= 100) {
+					updated.fatigue = 100;
+					updated.status = 'EXHAUSTED';
+					next.log = addLog(next.log, `[!] EXHAUSTION :: ${updated.name} goes offline to recover.`);
+				}
+
+				updated.xp += 10;
+				if (updated.xp >= 100 && !updated.spec) {
+					updated.spec = 'PENDING';
+					next.log = addLog(next.log, `:: PROMOTION AVAILABLE :: ${updated.name} is ready for specialization.`);
+				}
+			}
+		}
+		return updated;
+	});
+
+	// Aplikovanie celkového zárobku od agentov
+	if (totalAgentIncome > 0) {
+		const inc = applyIncome(next, totalAgentIncome);
+		next.gold = inc.gold;
+		next.totalGoldEarned = inc.totalGoldEarned;
+		next.runGoldEarned = inc.runGoldEarned;
+		next.heat = Math.min(100, (next.heat || 0) + totalAgentHeat);
+		
+		// Voliteľný log, aby to nespamovalo
+		// next.log = addLog(next.log, `:: AGENTS YIELD :: +${Math.floor(inc._earned).toLocaleString()} CR`);
+	}
+
+	// ── MAP PASSIVE GOLD ───────────────────────────────────────────────
+	const mapPassiveGold = calculateMapModifiers(next).passiveGold;
+	if (mapPassiveGold > 0) {
+		const inc = applyIncome(next, mapPassiveGold * idleMult); // Pridaný idleMult!
+		next = {
+			...next,
+			gold: inc.gold,
+			totalGoldEarned: inc.totalGoldEarned,
+			runGoldEarned: inc.runGoldEarned
+		};
+	}
+
+	// ── AUTO FENCER ────────────────────────────────────────────────────
+	if (next.upgrades.autoFencer >= 1) {
+		const fencerCd = (next.prestigePerks ?? {}).FAST_FENCE ? 15 : 30;
+		const newAutoTick = (next.autoFencerTick ?? 0) + 1;
+
+		if (newAutoTick >= fencerCd) {
+			const cold = next.inventory.filter(i => !i.isHot);
+			if (cold.length > 0) {
+				const income = applyIncome(next, cold.reduce((sum, i) => sum + i.gold, 0));
+				next = {
+					...next,
+					gold: income.gold,
+					totalGoldEarned: income.totalGoldEarned,
+					runGoldEarned: income.runGoldEarned,
+					inventory: next.inventory.filter(i => i.isHot),
+					autoFencerTick: 0,
+					log: addLog(next.log, `:: AUTO_FENCER :: SOLD ${cold.length} ITEM(S) :: +${income._earned.toLocaleString()} CR`)
+				};
+			} else {
+				next = { ...next, autoFencerTick: 0 };
+			}
+		} else {
+			next = { ...next, autoFencerTick: newAutoTick };
+		}
+	}
+
+	// ── COOLDOWN TICKY ─────────────────────────────────────────────────
+	if (next.darkMarketCooldown > 0) next = { ...next, darkMarketCooldown: next.darkMarketCooldown - 1 };
+	if ((next.barterCooldown ?? 0) > 0) next = { ...next, barterCooldown: next.barterCooldown - 1 };
+
+	// ── LAY LOW TIMER ──────────────────────────────────────────────────
+	if (next.layLowActive) {
+		const remaining = next.layLowTimer - 1;
+		if (remaining <= 0) {
+			next = {
+				...next,
+				layLowActive: false,
+				layLowTimer: 0,
+				layLowCooldown: 60,
+				log: addLog(next.log, ':: LAY_LOW COMPLETE :: cooldowns accelerated')
+			};
+		} else {
+			next = { ...next, layLowTimer: remaining };
+		}
+	} else if (next.layLowCooldown > 0) {
+		next = { ...next, layLowCooldown: next.layLowCooldown - 1 };
+	}
+
+	// ── RAID SYSTEM ────────────────────────────────────────────────────
+	if (!next.isIdle && !next.idlePromptActive) {
+		if (!(next.raidActive ?? false)) {
+			const newNextRaid = ((next.nextRaidIn ?? randomRaidInterval()) - 1);
+			if (newNextRaid <= 0) {
+				const cdWasActive = (next.layLowCooldown ?? 0) > 0;
+				let raidLog = addLog(next.log, `:: POLICE RAID INCOMING :: LAY LOW IN ${RAID_DURATION}s OR LOSE 30% CR`);
+				if (cdWasActive) raidLog = addLog(raidLog, ':: RAID ALERT :: LAY_LOW cooldown cleared');
+
+				next = {
+					...next,
+					raidActive: true,
+					raidTimer: RAID_DURATION,
+					nextRaidIn: randomRaidInterval(),
+					layLowCooldown: 0,
+					layLowActive: false,
+					layLowTimer: 0,
+					log: raidLog
+				};
+			} else {
+				next = { ...next, nextRaidIn: newNextRaid };
+			}
+		} else {
+			const newTimer = (next.raidTimer ?? 0) - 1;
+			if (newTimer <= 0) {
+				const raidReduction = Math.min(0.25, calculateMapModifiers(next).raidPenaltyReduction);
+				const goldLost = Math.floor(next.gold * Math.max(0.05, 0.30 - raidReduction));
+				next = {
+					...next,
+					raidActive: false,
+					raidTimer: 0,
+					nextRaidIn: randomRaidInterval(),
+					gold: Math.max(0, next.gold - goldLost),
+					log: addLog(next.log, `:: RAID :: CREDITS SEIZED :: -${goldLost.toLocaleString()} CR`)
+				};
+			} else {
+				next = { ...next, raidTimer: newTimer };
+			}
+		}
+	}
+
+	// ── BETRAYAL (Agent System) ───────────────────────────────────────────────
+	if (!next.isIdle && !next.idlePromptActive) {
+		const activeAgents = (next.agents || []).filter(a => a.status === 'ACTIVE');
+		if (next.heat >= 70 && activeAgents.length > 0) {
+			const perRunnerChance = DEV_MODE ? 0.005 : 0.0005;
+			
+			if (Math.random() < activeAgents.length * perRunnerChance) {
+				// Vyberieme agenta, ideálne toho s najnižšou lojalitou (alebo náhodného)
+				activeAgents.sort((a, b) => a.loyalty - b.loyalty);
+				const betrayer = activeAgents[0]; // Ten najmenej lojálny nás zradí!
+
+				const goldLost = Math.floor(next.gold * 0.15);
+				next = {
+					...next,
+					gold: Math.max(0, next.gold - goldLost),
+					heat: Math.min(100, next.heat + 20),
+					// Zmažeme zradcu zo zoznamu
+					agents: next.agents.filter(a => a.id !== betrayer.id),
+					log: addLog(next.log, `:: BETRAYAL :: ${betrayer.name} sold you out and fled! :: -${goldLost.toLocaleString()} CR :: HEAT +20`),
+				};
+				next = applyBustedCheck(next);
+				next = addZero(next, 'betrayal');
+			}
+		}
+	}
+
+	// ── AI_SUBROUTINE ──────────────────────────────────────────────────
+	if ((next.upgrades.aiSubroutine ?? 0) >= 1) {
+		const newAiTick = (next.aiSubroutineTick ?? 0) + 1;
+		if (newAiTick >= AI_SUBROUTINE_CYCLE) {
+			next = {
+				...next,
+				heat: Math.max(0, next.heat - 25),
+				aiSubroutineTick: 0,
+				log: addLog(next.log, ':: AI_SUBROUTINE :: heat suppressed :: -25 HEAT')
+			};
+		} else {
+			next = { ...next, aiSubroutineTick: newAiTick };
+		}
+	}
+
+	// ── SYSTEM SCAN ────────────────────────────────────────────────────
+	if (!next.isIdle && !next.idlePromptActive) {
+		if (!(next.systemScan?.active ?? false)) {
+			const nextIn = ((next.systemScan?.nextIn) ?? randomScanInterval()) - 1;
+			if (nextIn <= 0) {
+				next = {
+					...next,
+					systemScan: { active: true, timer: SCAN_DURATION, nextIn: randomScanInterval() },
+					log: addLog(next.log, '!! SYSTEM_SCAN DETECTED :: PURGE LOCAL LOGS IMMEDIATELY'),
+				};
+			} else {
+				next = { ...next, systemScan: { ...(next.systemScan ?? {}), active: false, nextIn } };
+			}
+		} else {
+			const scanTimer = (next.systemScan.timer ?? 0) - 1;
+			if (scanTimer <= 0) {
+				const goldLost = Math.floor(next.gold * 0.20);
+				next = {
+					...next,
+					gold: Math.max(0, next.gold - goldLost),
+					heat: Math.min(100, next.heat + 40),
+					systemScan: { active: false, timer: 0, nextIn: randomScanInterval() },
+					log: addLog(next.log, `:: SCAN COMPLETE :: TRACED :: -${goldLost.toLocaleString()} CR :: HEAT +40`),
+				};
+				next = applyBustedCheck(next);
+			} else {
+				next = { ...next, systemScan: { ...next.systemScan, timer: scanTimer } };
+			}
+		}
+	}
+
+	return { ...next, lastTickTime: nowMs };
 }
 
 export function checkMissions(state) {
-  if (!state.activeMissions || state.activeMissions.length === 0) return state;
+	if (!state.activeMissions || state.activeMissions.length === 0) return state;
 
-  let next = { ...state };
-  const now = Date.now();
+	let next = { ...state };
+	const now = Date.now();
 
-  const finished = next.activeMissions.filter(m => now >= m.endTime);
-  if (finished.length === 0) return next;
+	const finished = next.activeMissions.filter(m => now >= m.endTime);
+	if (finished.length === 0) return next;
 
-  finished.forEach(m => {
-    const hex = AETHERIA_MAP[m.hexId];
-    if (!hex) return;
+	finished.forEach(m => {
+		const hex = AETHERIA_MAP[m.hexId];
+		if (!hex) return;
+		
+		let missionSuccess = true;
 
-    // Návrat runnera do aktívnej služby
-    next.runners = { 
-      ...next.runners, 
-      [m.runnerType]: (next.runners[m.runnerType] || 0) + 1 
-    };
-   
-    // Masívny XP bonus za misiu
-    const currentXp = next.runnerXp[m.runnerType] || 0;
-    next.runnerXp = { 
-      ...next.runnerXp, 
-      [m.runnerType]: Math.min(100, currentXp + 20) 
-    };
+		// ── SPRACOVANIE AGENTA (Návrat, Únava, Zranenia) ──
+		if (next.agents) {
+			next.agents = next.agents.map(a => {
+				if (a.id === m.agentId) {
+					// 1. Šanca na zlyhanie/katastrofu (Závisí od Heatu)
+					const dangerRoll = Math.random() * 100;
+					const dangerThreshold = (next.heat / 5); // Pri 100 Heat je 20% šanca na prúser
+					
+					if (dangerRoll < dangerThreshold) {
+						missionSuccess = false;
+						const isCaptured = Math.random() > 0.6; // 40% šanca na zajatie, inak len zranenie
+						
+						if (isCaptured) {
+							next.log = addLog(next.log, `[!!!] M.I.A. :: ${a.name} WAS CAPTURED AT ${hex.label}!`);
+							return { ...a, status: 'CAPTURED', fatigue: 100, stress: 100 };
+						} else {
+							next.log = addLog(next.log, `[!] CASUALTY :: ${a.name} WAS INJURED AT ${hex.label}!`);
+							return { ...a, status: 'INJURED', fatigue: 100, stress: Math.min(100, a.stress + 50) };
+						}
+					}
 
-    // Ak uzol ešte nevlastníme, pripíšeme odmeny + missionSplash
-    if (!(next.capturedHexes || []).includes(m.hexId)) {
-      const mult = hex.lootMultiplier || 1;
-      const goldReward = Math.floor((Math.random() * 5000 + 5000) * mult);
-      const xpReward = Math.floor(1500 * mult);
+					// 2. Normálny, úspešný návrat
+					let updatedXp = a.xp + 30; // Misie dávajú veľa XP
+					let spec = a.spec;
+					if (updatedXp >= 100 && !spec) {
+						spec = 'PENDING';
+						next.log = addLog(next.log, `:: PROMOTION AVAILABLE :: ${a.name} is ready for specialization.`);
+					}
+					
+					// Misia extrémne vyčerpáva (+45% Fatigue)
+					const newFatigue = Math.min(100, a.fatigue + 45);
+					const newStatus = newFatigue >= 100 ? 'EXHAUSTED' : 'ACTIVE';
+					if (newStatus === 'EXHAUSTED') {
+						next.log = addLog(next.log, `[!] EXHAUSTION :: ${a.name} collapsed after returning from ${hex.label}.`);
+					}
 
-      next.gold += goldReward;
-      next.xp += xpReward;
+					return { ...a, status: newStatus, fatigue: newFatigue, xp: Math.min(100, updatedXp), spec: spec };
+				}
+				return a;
+			});
+		}
 
-      next.capturedHexes = [...(next.capturedHexes || []), m.hexId];
-      next.mapDiscovery = [...new Set([
-        ...(next.mapDiscovery || []), 
-        m.hexId, 
-        ...(hex.connections || [])
-      ])];
+		// ── ODMENY (Len ak misia neskončila katastrofou) ──
+		if (missionSuccess && !(next.capturedHexes || []).includes(m.hexId)) {
+			const mult = hex.lootMultiplier || 1;
+			const goldReward = Math.floor((Math.random() * 5000 + 5000) * mult);
+			const xpReward = Math.floor(1500 * mult);
 
-      // === NOVÁ SPLASH SCREEN LOGIKA ===
-      next.missionSplash = {
-        label: hex.label || hex.name || 'UNKNOWN_NODE',
-        runnerType: m.runnerType,
-        gold: goldReward,
-        xp: xpReward,
-        timestamp: Date.now()
-      };
+			next.gold += goldReward;
+			next.xp += xpReward;
 
-      const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+			next.capturedHexes = [...(next.capturedHexes || []), m.hexId];
+			next.mapDiscovery = [...new Set([
+				...(next.mapDiscovery || []), 
+				m.hexId, 
+				...(hex.connections || [])
+			])];
 
-      next.log = [
-        `[${t}] :: MISSION_SUCCESS :: ${hex.label} SECURED`,
-        `[${t}] :: REWARD :: +${goldReward.toLocaleString()} CR | +${xpReward} XP | +20 SPEC_XP`,
-        ...(next.log || [])
-      ].slice(0, 50);
-    }
-  });
+			next.missionSplash = {
+				label: hex.label || hex.name || 'UNKNOWN_NODE',
+				runnerType: m.runnerType,
+				gold: goldReward,
+				xp: xpReward,
+				timestamp: Date.now()
+			};
 
-  // Odstránime dokončené misie
-  next.activeMissions = next.activeMissions.filter(m => now < m.endTime);
+			const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+			next.log = [
+				`[${t}] :: MISSION_SUCCESS :: ${hex.label} SECURED`,
+				`[${t}] :: REWARD :: +${goldReward.toLocaleString()} CR | +${xpReward} XP`,
+				...(next.log || [])
+			].slice(0, 50);
+		}
+	});
 
-  return next;
+	// Odstránime dokončené misie
+	next.activeMissions = next.activeMissions.filter(m => now < m.endTime);
+
+	return next;
 }
 
 // ── SYSTEM SCAN ───────────────────────────────────────────────────────────────
@@ -1915,11 +2318,30 @@ export function counterHack(state) {
 
 export function setRunnerSpec(state, runnerType, spec) {
 	if (!['SHADOW', 'GREEDY'].includes(spec)) return state;
-	if ((state.runnerSpec ?? {})[runnerType] !== 'PENDING') return state;
-	const specLabel = spec === 'SHADOW' ? '-50% heat/cycle' : '+50% gold/cycle';
-	return {
-		...state,
-		runnerSpec: { ...(state.runnerSpec ?? {}), [runnerType]: spec },
-		log: addLog(state.log, `:: SPEC :: ${RUNNER_LABELS[runnerType] ?? runnerType.toUpperCase()} → ${spec} :: ${specLabel}`),
-	};
+	
+	let next = { ...state };
+	let promotedCount = 0;
+
+	// Povýšime všetkých agentov tohto typu, ktorí čakajú na povýšenie
+	if (next.agents) {
+		next.agents = next.agents.map(a => {
+			if (a.role === runnerType && a.spec === 'PENDING') {
+				promotedCount++;
+				return { ...a, spec: spec, xp: 0, level: a.level + 1 };
+			}
+			return a;
+		});
+	}
+
+	if (promotedCount > 0) {
+		const specLabel = spec === 'SHADOW' ? '-50% heat/cycle' : '+50% gold/cycle';
+		next.log = addLog(next.log, `:: PROMOTION :: ${promotedCount}x ${runnerType.toUpperCase()} → ${spec} :: ${specLabel}`);
+		
+		// Legacy zmazanie 'PENDING' zo starého objektu
+		if (next.runnerSpec && next.runnerSpec[runnerType] === 'PENDING') {
+			next.runnerSpec = { ...next.runnerSpec, [runnerType]: spec };
+		}
+	}
+
+	return next;
 }
