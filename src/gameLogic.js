@@ -5,7 +5,7 @@
 import { CITY_MAP as AETHERIA_MAP, DISTRICTS as AETHERIA_DISTRICTS } from '../CITY_MAP.js';
 
 // ── DEV MODE ─────────────────────────────────────────────────────────────────
-export const DEV_MODE = false;
+export const DEV_MODE = true;
 
 const DARK_MARKET_CD  = DEV_MODE ? 30  : 7200;
 const RUNNER_SR_CYCLE = DEV_MODE ? 5   : 30;
@@ -214,42 +214,54 @@ export const PRESTIGE_PERK_DEFS = [
 	{ id: 'EYE_REVEAL',     branch: 'ARCHITECT', reqLevel: 1, cost: 1,desc: 'Reveals exact countdown to next Police Raid',        effect: 'Raid timer always visible in OPS'           },
 ];
 
+
 // ── PROGRESSIVE DISCLOSURE ────────────────────────────────────────────────────
 
 export function isUnlocked(state, feature) {
-  const lvl = state.level ?? 1;
-  switch (feature) {
-    // Always visible from level 1
-    case 'siphon':     return true;
-    case 'gold':       return true;
-    case 'log':        return true;
-    case 'stamina':    return true;
-    // Level 2
-    case 'breach':     return lvl >= 2;
-    case 'xp':         return lvl >= 2;
-    // Level 3
-    case 'upgrades_tab': return lvl >= 3;
-    case 'heat':         return true;
-    case 'runners':      return lvl >= 3;
-    case 'agency':       return lvl >= 3;
-    // Level 4
-    case 'rep':          return lvl >= 4;
-    case 'dark_market':  return lvl >= 4;
-    case 'barter':       return lvl >= 4;
-    case 'intel':        return lvl >= 4;
-    // Level 5
-    case 'district':      return lvl >= 5;
-    case 'daily':         return lvl >= 5;
-    // Level 6
-    case 'deep_siphon':  return lvl >= 6;
-    case 'manual_cool':  return lvl >= 6;
-    case 'ai_subroutine':return lvl >= 6;
-    // Level 4 + 50 REP
-    case 'protocol':     return lvl >= 4 && (state.reputation ?? 0) >= 50;
-    // Level 8
-    case 'mainframe':    return lvl >= 8;
-    default:             return true;
-  }
+	const lvl = state.level ?? 1;
+	const rep = state.reputation ?? 0;
+	const prestige = state.prestige ?? 0;
+
+	switch (feature) {
+		// Always visible
+		case 'siphon':     return true;
+		case 'gold':       return true;
+		case 'log':        return true;
+		case 'stamina':    return true;
+		case 'heat':       return true;
+
+		// Level 2
+		case 'breach':     return lvl >= 2;
+		case 'xp':         return lvl >= 2;
+
+		// Level 3 + Reputation Gate
+		case 'upgrades_tab': return lvl >= 3;
+		case 'runners':      return lvl >= 3 && rep >= 20;
+		case 'agency':       return lvl >= 3 && rep >= 20;
+
+		// Level 4 + Reputation Gate
+		case 'rep':          return lvl >= 4;
+		case 'barter':       return lvl >= 4;
+		case 'intel':        return lvl >= 4 && rep >= 50;
+		case 'protocol':     return lvl >= 4 && rep >= 50;
+		
+		// DARK MARKET: Vyžaduje buď Prestíž, alebo vysokú reputáciu (100) v prvom run-e
+		case 'dark_market':  return prestige >= 1 || (lvl >= 4 && rep >= 100);
+
+		// Level 5 + Známosť v podsvetí
+		case 'district':     return lvl >= 5 && rep >= 250;
+		case 'daily':        return lvl >= 5;
+
+		// Level 6
+		case 'deep_siphon':  return lvl >= 6;
+		case 'manual_cool':  return lvl >= 6;
+		case 'ai_subroutine':return lvl >= 6;
+
+		// Level 8 + Elitný status
+		case 'mainframe':    return lvl >= 8 && rep >= 1000;
+		
+		default:             return true;
+	}
 }
 
 export function setProtocol(state, protocol) {
@@ -294,13 +306,13 @@ const RUNNER_LABELS = {
 // state.district is now one of these keys.
 
 export const DISTRICTS = {
-	Z1: { id: 'Z1', name: 'NEON_CORE',      color: '#ffc174', desc: 'High tech, high risk. Heart of Aetheria.', lootMultiplier: 4.0, heatDecayBase: 0.1 },
-	Z2: { id: 'Z2', name: 'INDUSTRIAL_WASTES', color: '#ff6b35', desc: 'Raw resources. Gold focus. Toxic.', lootMultiplier: 2.0, heatDecayBase: 0.2 },
-	Z3: { id: 'Z3', name: 'EASTERN_TECH',      color: '#00d4ff', desc: 'Encryption and security complexes.', lootMultiplier: 2.5, heatDecayBase: 0.15 },
-	Z4: { id: 'Z4', name: 'WESTERN_SLUMS',     color: '#b347ff', desc: 'Stealth and black market networks.', lootMultiplier: 1.0, heatDecayBase: 0.3 },
-	Z5: { id: 'Z5', name: 'CORP_CITADEL',      color: '#ff2244', desc: 'Endgame zone. GID controlled.', lootMultiplier: 8.0, heatDecayBase: 0.05 },
-	Z6: { id: 'Z6', name: 'THE_UNDERBELLY',    color: '#22ff88', desc: 'Hidden. Accessed via Subway Nexus.', lootMultiplier: 3.0, heatDecayBase: 0.4 },
-	Z7: { id: 'Z7', name: 'BUFFER_DISTRICTS',  color: '#888899', desc: 'Transition zones. Contested.', lootMultiplier: 1.5, heatDecayBase: 0.2 },
+	Z1: { id: 'Z1', name: 'NEON_CORE',      color: '#ffc174', desc: 'High tech, high risk. Heart of Aetheria.', lootMultiplier: 4.0, xpMultiplier: 2.5, heatDecayBase: 0.1 },
+	Z2: { id: 'Z2', name: 'INDUSTRIAL_WASTES', color: '#ff6b35', desc: 'Raw resources. Gold focus. Toxic.', lootMultiplier: 2.0, xpMultiplier: 1.5, heatDecayBase: 0.2 },
+	Z3: { id: 'Z3', name: 'EASTERN_TECH',      color: '#00d4ff', desc: 'Encryption and security complexes.', lootMultiplier: 2.5, xpMultiplier: 2.0, heatDecayBase: 0.15 },
+	Z4: { id: 'Z4', name: 'WESTERN_SLUMS',     color: '#b347ff', desc: 'Stealth and black market networks.', lootMultiplier: 1.0, xpMultiplier: 1.0, heatDecayBase: 0.3 },
+	Z5: { id: 'Z5', name: 'CORP_CITADEL',      color: '#ff2244', desc: 'Endgame zone. GID controlled.', lootMultiplier: 8.0, xpMultiplier: 4.0, heatDecayBase: 0.05 },
+	Z6: { id: 'Z6', name: 'THE_UNDERBELLY',    color: '#22ff88', desc: 'Hidden. Accessed via Subway Nexus.', lootMultiplier: 3.0, xpMultiplier: 3.0, heatDecayBase: 0.4 },
+	Z7: { id: 'Z7', name: 'BUFFER_DISTRICTS',  color: '#888899', desc: 'Transition zones. Contested.', lootMultiplier: 1.5, xpMultiplier: 1.2, heatDecayBase: 0.2 },
 };
 
 // ── CANONICAL HEX MAP (from CITY_MAP.js) ──────────────────────────────────────
@@ -676,7 +688,11 @@ export function getRandomLoot(table) {
 }
 
 export function xpRequired(level) {
-  return Math.floor(100 * Math.pow(2.2, level - 1));
+	// Level 1: 100 XP
+	// Level 5: ~500 XP
+	// Level 10: ~3 800 XP
+	// Level 15: ~29 000 XP
+	return Math.floor(100 * Math.pow(1.5, level - 1));
 }
 
 export function heatStatus(heat) {
@@ -883,333 +899,356 @@ function applyComboAndCrit(rawItem, state) {
 // ── PLAYER ACTIONS ────────────────────────────────────────────────────────────
 
 export function siphon(state) {
-  const maxInventory = getMaxInventory(state.upgrades);
-  if (state.bustedLockout > 0)                return state;
-  if (state.layLowActive)                     return state;
-  if (state.inventory.length >= maxInventory) return state;
-  const siphonCost  = (state.prestigePerks ?? {}).GHOST_STEP ? 8 : 10;
-  if (state.stamina < siphonCost) {
-    return { ...state, log: addLog(state.log, ':: SIPHON ABORTED — INSUFFICIENT_STAMINA') };
-  }
+	const maxInventory = getMaxInventory(state.upgrades);
+	if (state.bustedLockout > 0)                return state;
+	if (state.layLowActive)                     return state;
+	if (state.inventory.length >= maxInventory) return state;
+	const siphonCost  = (state.prestigePerks ?? {}).GHOST_STEP ? 8 : 10;
+	if (state.stamina < siphonCost) {
+		return { ...state, log: addLog(state.log, ':: SIPHON ABORTED — INSUFFICIENT_STAMINA') };
+	}
 
-  const distMult = DISTRICTS[state.district]?.lootMultiplier ?? 1;
-  const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
-  const heatPenalty     = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
-  const bountyPen       = (state.bountyActive ?? false) ? 0.20 : 0;
-  const proto           = PROTOCOL_DEFS[state.activeProtocol ?? 'NONE'] ?? {};
-  const protoHeatMult   = proto.heatMult    ?? 1;
-  const protoSuccessMod = proto.successRateMod ?? 0;
-  const protoCreditMult = proto.creditMult  ?? 1;
-  const protoXpMult     = proto.xpMult      ?? 1;
-  const ghostAimBonus   = (state.prestigePerks?.GHOST_AIM) ? 0.10 : 0;
-  const mapSuccessBonus = calculateMapModifiers(state).siphonSuccessBonus;
-  const successRate = Math.min(0.95, Math.max(0.05,
-    0.70 + (state.level - 1) * 0.03 + (state.upgrades.ghostProtocol ?? 0) * 0.02 - heatPenalty - bountyPen + protoSuccessMod + ghostAimBonus + mapSuccessBonus));
-  const newStamina  = state.stamina - siphonCost;
-  const heatFail    = Math.round(10 * heatMult * protoHeatMult);
+	const distMult = DISTRICTS[state.district]?.lootMultiplier ?? 1;
+	const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
+	const heatPenalty     = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
+	const bountyPen       = (state.bountyActive ?? false) ? 0.20 : 0;
+	const proto           = PROTOCOL_DEFS[state.activeProtocol ?? 'NONE'] ?? {};
+	const protoHeatMult   = proto.heatMult    ?? 1;
+	const protoSuccessMod = proto.successRateMod ?? 0;
+	const protoCreditMult = proto.creditMult  ?? 1;
+	const protoXpMult     = proto.xpMult      ?? 1;
+	const ghostAimBonus   = (state.prestigePerks?.GHOST_AIM) ? 0.10 : 0;
+	const mapSuccessBonus = calculateMapModifiers(state).siphonSuccessBonus;
+	const successRate = Math.min(0.95, Math.max(0.05,
+		0.70 + (state.level - 1) * 0.03 + (state.upgrades.ghostProtocol ?? 0) * 0.02 - heatPenalty - bountyPen + protoSuccessMod + ghostAimBonus + mapSuccessBonus));
+	const newStamina  = state.stamina - siphonCost;
+	const heatFail    = Math.round(10 * heatMult * protoHeatMult);
 
-  if (Math.random() >= successRate) {
-    const comboBroke = (state.comboCount ?? 0) > 0;
-    let nextLog = state.log;
-    if (comboBroke) nextLog = addLog(nextLog, '!! COMBO BREAK');
-    nextLog = addLog(nextLog, `✗ SIPHON · HEAT+${heatFail}`);
-    return applyBustedCheck({
-      ...state,
-      stamina:    newStamina,
-      heat:       Math.min(100, state.heat + heatFail),
-      comboCount: 0,
-      logBatch:   null,
-      feedback:   { type: 'FAIL', ts: Date.now() },
-      log:        nextLog,
-    });
-  }
+	if (Math.random() >= successRate) {
+		const comboBroke = (state.comboCount ?? 0) > 0;
+		let nextLog = state.log;
+		if (comboBroke) nextLog = addLog(nextLog, '!! COMBO BREAK');
+		nextLog = addLog(nextLog, `✗ SIPHON · HEAT+${heatFail}`);
+		return applyBustedCheck({
+			...state,
+			stamina:    newStamina,
+			heat:       Math.min(100, state.heat + heatFail),
+			comboCount: 0,
+			logBatch:   null,
+			feedback:   { type: 'FAIL', ts: Date.now() },
+			log:        nextLog,
+		});
+	}
 
-  const loot         = getRandomLoot(STANDARD_LOOT);
-  const rawItem      = makeItem(loot, distMult, state.upgrades, state.intelUpgrades ?? {});
-  const prefixHeatMult = rawItem.prefixHeatMult ?? 1;
-  const prefixXpMult   = rawItem.prefixXpMult   ?? 1;
-  const heatOk       = Math.round(5 * heatMult * protoHeatMult * prefixHeatMult);
-  const xpBonus = 1 + (state.upgrades?.xpBoost ?? 0) * 0.20;
-  const finalXp = Math.round(loot.xp * protoXpMult * prefixXpMult * xpBonus);
-  const isHighValue  = HIGH_VALUE_IDS.has(loot.id);
-  const protoRawItem = protoCreditMult !== 1
-    ? { ...rawItem, gold: Math.round(rawItem.gold * protoCreditMult) }
-    : rawItem;
-  const { item, isCritical, newCombo } = applyComboAndCrit(protoRawItem, state);
+	const loot         = getRandomLoot(STANDARD_LOOT);
+	const rawItem      = makeItem(loot, distMult, state.upgrades, state.intelUpgrades ?? {});
+	const prefixHeatMult = rawItem.prefixHeatMult ?? 1;
+	const prefixXpMult   = rawItem.prefixXpMult   ?? 1;
+	const heatOk       = Math.round(5 * heatMult * protoHeatMult * prefixHeatMult);
+	
+	// 🔥 UNIVERZÁLNY XP VÝPOČET 🔥
+	const distXpMult   = DISTRICTS[state.district]?.xpMultiplier ?? 1;
+	const mapXpBonus   = calculateMapModifiers(state).xpBoost ?? 0;
+	const upgradeXpBonus = 1 + (state.upgrades?.xpBoost ?? 0) * 0.20;
+	const totalXpMult  = upgradeXpBonus * (1 + mapXpBonus);
+	const finalXp      = Math.round(loot.xp * distXpMult * protoXpMult * prefixXpMult * totalXpMult);
 
-  const ar = addActionLog(state, 'SIPHON', { item: rawItem.id, xp: finalXp, heat: heatOk, critical: isCritical });
+	const isHighValue  = HIGH_VALUE_IDS.has(loot.id);
+	const protoRawItem = protoCreditMult !== 1
+		? { ...rawItem, gold: Math.round(rawItem.gold * protoCreditMult) }
+		: rawItem;
+	const { item, isCritical, newCombo } = applyComboAndCrit(protoRawItem, state);
 
-  let next = checkLevelUp({
-    ...state,
-    stamina:            newStamina,
-    heat:               Math.min(100, state.heat + heatOk),
-    xp:                 state.xp + finalXp,
-    reputation:         state.reputation + 1,
-    comboCount:         newCombo,
-    heatSpikeTimer:     isHighValue ? 10 : (state.heatSpikeTimer ?? 0),
-    siphonsWithoutBust: (state.siphonsWithoutBust ?? 0) + 1,
-    inventory:          [...state.inventory, item],
-    feedback:           { type: 'SUCCESS', gold: item.gold, item: rawItem.id, critical: isCritical, ts: Date.now() },
-    log:                ar.log,
-    logBatch:           ar.logBatch,
-  });
-  next = applyBustedCheck(next);
-  next = addZero(next, 'first_siphon');
-  if (rawItem.isQuantum) next = addZero(next, 'quantum_drop');
-  if (next.gold >= 10000) next = addZero(next, 'gold_10k');
-  next = updateDailyChallenge(next, 'SIPHON_COUNT', 1);
-  next = updateDailyChallenge(next, 'COMBO_REACH', newCombo);
-  next = tryDropEncKey(next);
-  // achievements
-  if ((next.siphonsWithoutBust ?? 0) >= 50) next = checkAchievement(next, 'GHOST');
-  if (isCritical)  next = checkAchievement(next, 'FIRST_BLOOD');
-  if (newCombo >= 15) next = checkAchievement(next, 'COMBO_KING');
-  if (next.inventory.length >= getMaxInventory(next.upgrades)) next = checkAchievement(next, 'DATA_HOARDER');
-  return next;
+	const ar = addActionLog(state, 'SIPHON', { item: rawItem.id, xp: finalXp, heat: heatOk, critical: isCritical });
+
+	let next = checkLevelUp({
+		...state,
+		stamina:            newStamina,
+		heat:               Math.min(100, state.heat + heatOk),
+		xp:                 state.xp + finalXp,
+		reputation:         state.reputation + 1,
+		comboCount:         newCombo,
+		heatSpikeTimer:     isHighValue ? 10 : (state.heatSpikeTimer ?? 0),
+		siphonsWithoutBust: (state.siphonsWithoutBust ?? 0) + 1,
+		inventory:          [...state.inventory, item],
+		feedback:           { type: 'SUCCESS', gold: item.gold, item: rawItem.id, critical: isCritical, ts: Date.now() },
+		log:                ar.log,
+		logBatch:           ar.logBatch,
+	});
+	next = applyBustedCheck(next);
+	next = addZero(next, 'first_siphon');
+	if (rawItem.isQuantum) next = addZero(next, 'quantum_drop');
+	if (next.gold >= 10000) next = addZero(next, 'gold_10k');
+	next = updateDailyChallenge(next, 'SIPHON_COUNT', 1);
+	next = updateDailyChallenge(next, 'COMBO_REACH', newCombo);
+	next = tryDropEncKey(next);
+	if ((next.siphonsWithoutBust ?? 0) >= 50) next = checkAchievement(next, 'GHOST');
+	if (isCritical)  next = checkAchievement(next, 'FIRST_BLOOD');
+	if (newCombo >= 15) next = checkAchievement(next, 'COMBO_KING');
+	if (next.inventory.length >= getMaxInventory(next.upgrades)) next = checkAchievement(next, 'DATA_HOARDER');
+	return next;
 }
 
 export function breach(state) {
-  const maxInventory = getMaxInventory(state.upgrades);
-  if (state.bustedLockout > 0)                return state;
-  if (state.layLowActive)                     return state;
-  if (state.inventory.length >= maxInventory) return state;
-  if (state.level < 2) {
-    return { ...state, log: addLog(state.log, ':: BREACH REQUIRES LEVEL 2') };
-  }
-  if (state.stamina < 25) {
-    return { ...state, log: addLog(state.log, ':: BREACH ABORTED — INSUFFICIENT_STAMINA') };
-  }
+	const maxInventory = getMaxInventory(state.upgrades);
+	if (state.bustedLockout > 0)                return state;
+	if (state.layLowActive)                     return state;
+	if (state.inventory.length >= maxInventory) return state;
+	if (state.level < 2) {
+		return { ...state, log: addLog(state.log, ':: BREACH REQUIRES LEVEL 2') };
+	}
+	if (state.stamina < 25) {
+		return { ...state, log: addLog(state.log, ':: BREACH ABORTED — INSUFFICIENT_STAMINA') };
+	}
 
-  const distMult = DISTRICTS[state.district]?.lootMultiplier ?? 1;
-  const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
-  const heatPenalty     = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
-  const bountyPen       = (state.bountyActive ?? false) ? 0.20 : 0;
-  const proto           = PROTOCOL_DEFS[state.activeProtocol ?? 'NONE'] ?? {};
-  const protoHeatMult   = proto.heatMult    ?? 1;
-  const protoSuccessMod = proto.successRateMod ?? 0;
-  const protoCreditMult = proto.creditMult  ?? 1;
-  const protoXpMult     = proto.xpMult      ?? 1;
-  const successRate = Math.min(0.95, Math.max(0.05, 0.55 + (state.level - 1) * 0.04 - heatPenalty - bountyPen + protoSuccessMod));
-  const newStamina  = state.stamina - 25;
-  const heatFail    = Math.round(20 * heatMult * protoHeatMult);
+	const distMult = DISTRICTS[state.district]?.lootMultiplier ?? 1;
+	const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
+	const heatPenalty     = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
+	const bountyPen       = (state.bountyActive ?? false) ? 0.20 : 0;
+	const proto           = PROTOCOL_DEFS[state.activeProtocol ?? 'NONE'] ?? {};
+	const protoHeatMult   = proto.heatMult    ?? 1;
+	const protoSuccessMod = proto.successRateMod ?? 0;
+	const protoCreditMult = proto.creditMult  ?? 1;
+	const protoXpMult     = proto.xpMult      ?? 1;
+	const successRate = Math.min(0.95, Math.max(0.05, 0.55 + (state.level - 1) * 0.04 - heatPenalty - bountyPen + protoSuccessMod));
+	const newStamina  = state.stamina - 25;
+	const heatFail    = Math.round(20 * heatMult * protoHeatMult);
 
-  if (Math.random() >= successRate) {
-    const comboBroke = (state.comboCount ?? 0) > 0;
-    let nextLog = state.log;
-    if (comboBroke) nextLog = addLog(nextLog, '!! COMBO BREAK');
-    nextLog = addLog(nextLog, `✗ BREACH · HEAT+${heatFail}`);
-    return applyBustedCheck({
-      ...state,
-      stamina:    newStamina,
-      heat:       Math.min(100, state.heat + heatFail),
-      comboCount: 0,
-      logBatch:   null,
-      feedback:   { type: 'FAIL', ts: Date.now() },
-      log:        nextLog,
-    });
-  }
+	if (Math.random() >= successRate) {
+		const comboBroke = (state.comboCount ?? 0) > 0;
+		let nextLog = state.log;
+		if (comboBroke) nextLog = addLog(nextLog, '!! COMBO BREAK');
+		nextLog = addLog(nextLog, `✗ BREACH · HEAT+${heatFail}`);
+		return applyBustedCheck({
+			...state,
+			stamina:    newStamina,
+			heat:       Math.min(100, state.heat + heatFail),
+			comboCount: 0,
+			logBatch:   null,
+			feedback:   { type: 'FAIL', ts: Date.now() },
+			log:        nextLog,
+		});
+	}
 
-  const loot         = getRandomLoot(PREMIUM_LOOT);
-  const rawItem      = makeItem(loot, distMult, state.upgrades, state.intelUpgrades ?? {});
-  const prefixHeatMult = rawItem.prefixHeatMult ?? 1;
-  const prefixXpMult   = rawItem.prefixXpMult   ?? 1;
-  const heatOk       = Math.round(15 * heatMult * protoHeatMult * prefixHeatMult);
-  const xpBonus = 1 + (state.upgrades?.xpBoost ?? 0) * 0.20;
-  const finalXp = Math.round(loot.xp * protoXpMult * prefixXpMult * xpBonus);
-  const isHighValue  = HIGH_VALUE_IDS.has(loot.id);
-  const protoRawItem = protoCreditMult !== 1
-    ? { ...rawItem, gold: Math.round(rawItem.gold * protoCreditMult) }
-    : rawItem;
-  const { item, isCritical, newCombo } = applyComboAndCrit(protoRawItem, state);
+	const loot         = getRandomLoot(PREMIUM_LOOT);
+	const rawItem      = makeItem(loot, distMult, state.upgrades, state.intelUpgrades ?? {});
+	const prefixHeatMult = rawItem.prefixHeatMult ?? 1;
+	const prefixXpMult   = rawItem.prefixXpMult   ?? 1;
+	const heatOk       = Math.round(15 * heatMult * protoHeatMult * prefixHeatMult);
+	
+	// 🔥 UNIVERZÁLNY XP VÝPOČET 🔥
+	const distXpMult   = DISTRICTS[state.district]?.xpMultiplier ?? 1;
+	const mapXpBonus   = calculateMapModifiers(state).xpBoost ?? 0;
+	const upgradeXpBonus = 1 + (state.upgrades?.xpBoost ?? 0) * 0.20;
+	const totalXpMult  = upgradeXpBonus * (1 + mapXpBonus);
+	const finalXp      = Math.round(loot.xp * distXpMult * protoXpMult * prefixXpMult * totalXpMult);
 
-  const ar = addActionLog(state, 'BREACH', { item: rawItem.id, xp: finalXp, heat: heatOk, critical: isCritical });
+	const isHighValue  = HIGH_VALUE_IDS.has(loot.id);
+	const protoRawItem = protoCreditMult !== 1
+		? { ...rawItem, gold: Math.round(rawItem.gold * protoCreditMult) }
+		: rawItem;
+	const { item, isCritical, newCombo } = applyComboAndCrit(protoRawItem, state);
 
-  let next = checkLevelUp({
-    ...state,
-    stamina:        newStamina,
-    heat:           Math.min(100, state.heat + heatOk),
-    xp:             state.xp + finalXp,
-    reputation:     state.reputation + 3,
-    comboCount:     newCombo,
-    heatSpikeTimer: isHighValue ? 10 : (state.heatSpikeTimer ?? 0),
-    inventory:      [...state.inventory, item],
-    feedback:       { type: 'SUCCESS', gold: item.gold, item: rawItem.id, critical: isCritical, ts: Date.now() },
-    log:            ar.log,
-    logBatch:       ar.logBatch,
-  });
-  next = applyBustedCheck(next);
-  if (rawItem.isQuantum) next = addZero(next, 'quantum_drop');
-  if (next.gold >= 10000) next = addZero(next, 'gold_10k');
-  next = updateDailyChallenge(next, 'BREACH_COUNT', 1);
-  next = updateDailyChallenge(next, 'COMBO_REACH', newCombo);
-  next = tryDropEncKey(next);
-  if (isCritical)  next = checkAchievement(next, 'FIRST_BLOOD');
-  if (newCombo >= 15) next = checkAchievement(next, 'COMBO_KING');
-  if (next.inventory.length >= getMaxInventory(next.upgrades)) next = checkAchievement(next, 'DATA_HOARDER');
-  return next;
+	const ar = addActionLog(state, 'BREACH', { item: rawItem.id, xp: finalXp, heat: heatOk, critical: isCritical });
+
+	let next = checkLevelUp({
+		...state,
+		stamina:        newStamina,
+		heat:           Math.min(100, state.heat + heatOk),
+		xp:             state.xp + finalXp,
+		reputation:     state.reputation + 3,
+		comboCount:     newCombo,
+		heatSpikeTimer: isHighValue ? 10 : (state.heatSpikeTimer ?? 0),
+		inventory:      [...state.inventory, item],
+		feedback:       { type: 'SUCCESS', gold: item.gold, item: rawItem.id, critical: isCritical, ts: Date.now() },
+		log:            ar.log,
+		logBatch:       ar.logBatch,
+	});
+	next = applyBustedCheck(next);
+	if (rawItem.isQuantum) next = addZero(next, 'quantum_drop');
+	if (next.gold >= 10000) next = addZero(next, 'gold_10k');
+	next = updateDailyChallenge(next, 'BREACH_COUNT', 1);
+	next = updateDailyChallenge(next, 'COMBO_REACH', newCombo);
+	next = tryDropEncKey(next);
+	if (isCritical)  next = checkAchievement(next, 'FIRST_BLOOD');
+	if (newCombo >= 15) next = checkAchievement(next, 'COMBO_KING');
+	if (next.inventory.length >= getMaxInventory(next.upgrades)) next = checkAchievement(next, 'DATA_HOARDER');
+	return next;
 }
 
 export function deepSiphon(state) {
-  const maxInventory = getMaxInventory(state.upgrades);
-  if (state.bustedLockout > 0)                return state;
-  if (state.layLowActive)                     return state;
-  if (state.inventory.length >= maxInventory) return state;
-  if (state.level < 5) {
-    return { ...state, log: addLog(state.log, ':: DEEP_SIPHON REQUIRES LEVEL 5') };
-  }
-  if (state.stamina < 15) {
-    return { ...state, log: addLog(state.log, ':: DEEP_SIPHON ABORTED — INSUFFICIENT_STAMINA') };
-  }
+	const maxInventory = getMaxInventory(state.upgrades);
+	if (state.bustedLockout > 0)                return state;
+	if (state.layLowActive)                     return state;
+	if (state.inventory.length >= maxInventory) return state;
+	if (state.level < 5) {
+		return { ...state, log: addLog(state.log, ':: DEEP_SIPHON REQUIRES LEVEL 5') };
+	}
+	if (state.stamina < 15) {
+		return { ...state, log: addLog(state.log, ':: DEEP_SIPHON ABORTED — INSUFFICIENT_STAMINA') };
+	}
 
-  const distMult = DISTRICTS[state.district]?.lootMultiplier ?? 1;
-  const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
-  const heatPenalty     = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
-  const bountyPen       = (state.bountyActive ?? false) ? 0.20 : 0;
-  const proto           = PROTOCOL_DEFS[state.activeProtocol ?? 'NONE'] ?? {};
-  const protoHeatMult   = proto.heatMult    ?? 1;
-  const protoSuccessMod = proto.successRateMod ?? 0;
-  const protoCreditMult = proto.creditMult  ?? 1;
-  const protoXpMult     = proto.xpMult      ?? 1;
-  const ghostAimBonus   = (state.prestigePerks?.GHOST_AIM) ? 0.10 : 0;
-  const mapSuccessBonus = calculateMapModifiers(state).siphonSuccessBonus;
-  const successRate = Math.min(0.95, Math.max(0.05, 0.65 + (state.level - 1) * 0.03 - heatPenalty - bountyPen + protoSuccessMod + ghostAimBonus + mapSuccessBonus));
-  const newStamina  = state.stamina - 15;
-  const heatFail    = Math.round(12 * heatMult * protoHeatMult);
+	const distMult = DISTRICTS[state.district]?.lootMultiplier ?? 1;
+	const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
+	const heatPenalty     = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
+	const bountyPen       = (state.bountyActive ?? false) ? 0.20 : 0;
+	const proto           = PROTOCOL_DEFS[state.activeProtocol ?? 'NONE'] ?? {};
+	const protoHeatMult   = proto.heatMult    ?? 1;
+	const protoSuccessMod = proto.successRateMod ?? 0;
+	const protoCreditMult = proto.creditMult  ?? 1;
+	const protoXpMult     = proto.xpMult      ?? 1;
+	const ghostAimBonus   = (state.prestigePerks?.GHOST_AIM) ? 0.10 : 0;
+	const mapSuccessBonus = calculateMapModifiers(state).siphonSuccessBonus;
+	const successRate = Math.min(0.95, Math.max(0.05, 0.65 + (state.level - 1) * 0.03 - heatPenalty - bountyPen + protoSuccessMod + ghostAimBonus + mapSuccessBonus));
+	const newStamina  = state.stamina - 15;
+	const heatFail    = Math.round(12 * heatMult * protoHeatMult);
 
-  if (Math.random() >= successRate) {
-    const comboBroke = (state.comboCount ?? 0) > 0;
-    let nextLog = state.log;
-    if (comboBroke) nextLog = addLog(nextLog, '!! COMBO BREAK');
-    nextLog = addLog(nextLog, `✗ DEEP_SIPHON · HEAT+${heatFail}`);
-    return applyBustedCheck({
-      ...state,
-      stamina:    newStamina,
-      heat:       Math.min(100, state.heat + heatFail),
-      comboCount: 0,
-      logBatch:   null,
-      feedback:   { type: 'FAIL', ts: Date.now() },
-      log:        nextLog,
-    });
-  }
+	if (Math.random() >= successRate) {
+		const comboBroke = (state.comboCount ?? 0) > 0;
+		let nextLog = state.log;
+		if (comboBroke) nextLog = addLog(nextLog, '!! COMBO BREAK');
+		nextLog = addLog(nextLog, `✗ DEEP_SIPHON · HEAT+${heatFail}`);
+		return applyBustedCheck({
+			...state,
+			stamina:    newStamina,
+			heat:       Math.min(100, state.heat + heatFail),
+			comboCount: 0,
+			logBatch:   null,
+			feedback:   { type: 'FAIL', ts: Date.now() },
+			log:        nextLog,
+		});
+	}
 
-  const loot         = getRandomLoot(DEEP_SIPHON_LOOT);
-  const rawItem      = makeItem(loot, distMult, state.upgrades, state.intelUpgrades ?? {});
-  const prefixHeatMult = rawItem.prefixHeatMult ?? 1;
-  const prefixXpMult   = rawItem.prefixXpMult   ?? 1;
-  const heatOk       = Math.round(8 * heatMult * protoHeatMult * prefixHeatMult);
-  const xpBonus = 1 + (state.upgrades?.xpBoost ?? 0) * 0.20;
-  const finalXp = Math.round(loot.xp * protoXpMult * prefixXpMult * xpBonus);
-  const isHighValue  = HIGH_VALUE_IDS.has(loot.id);
-  const protoRawItem = protoCreditMult !== 1
-    ? { ...rawItem, gold: Math.round(rawItem.gold * protoCreditMult) }
-    : rawItem;
-  const { item, isCritical, newCombo } = applyComboAndCrit(protoRawItem, state);
+	const loot         = getRandomLoot(DEEP_SIPHON_LOOT);
+	const rawItem      = makeItem(loot, distMult, state.upgrades, state.intelUpgrades ?? {});
+	const prefixHeatMult = rawItem.prefixHeatMult ?? 1;
+	const prefixXpMult   = rawItem.prefixXpMult   ?? 1;
+	const heatOk       = Math.round(8 * heatMult * protoHeatMult * prefixHeatMult);
+	
+	// 🔥 UNIVERZÁLNY XP VÝPOČET 🔥
+	const distXpMult   = DISTRICTS[state.district]?.xpMultiplier ?? 1;
+	const mapXpBonus   = calculateMapModifiers(state).xpBoost ?? 0;
+	const upgradeXpBonus = 1 + (state.upgrades?.xpBoost ?? 0) * 0.20;
+	const totalXpMult  = upgradeXpBonus * (1 + mapXpBonus);
+	const finalXp      = Math.round(loot.xp * distXpMult * protoXpMult * prefixXpMult * totalXpMult);
 
-  const ar = addActionLog(state, 'DEEP_SIPHON', { item: rawItem.id, xp: finalXp, heat: heatOk, critical: isCritical });
+	const isHighValue  = HIGH_VALUE_IDS.has(loot.id);
+	const protoRawItem = protoCreditMult !== 1
+		? { ...rawItem, gold: Math.round(rawItem.gold * protoCreditMult) }
+		: rawItem;
+	const { item, isCritical, newCombo } = applyComboAndCrit(protoRawItem, state);
 
-  let next = checkLevelUp({
-    ...state,
-    stamina:        newStamina,
-    heat:           Math.min(100, state.heat + heatOk),
-    xp:             state.xp + finalXp,
-    reputation:     state.reputation + 2,
-    comboCount:     newCombo,
-    heatSpikeTimer: isHighValue ? 10 : (state.heatSpikeTimer ?? 0),
-    inventory:      [...state.inventory, item],
-    feedback:       { type: 'SUCCESS', gold: item.gold, item: rawItem.id, critical: isCritical, ts: Date.now() },
-    log:            ar.log,
-    logBatch:       ar.logBatch,
-  });
-  next = applyBustedCheck(next);
-  next = updateDailyChallenge(next, 'COMBO_REACH', newCombo);
-  if (rawItem.isQuantum) next = addZero(next, 'quantum_drop');
-  if (next.gold >= 10000) next = addZero(next, 'gold_10k');
-  next = tryDropEncKey(next);
-  if (isCritical)  next = checkAchievement(next, 'FIRST_BLOOD');
-  if (newCombo >= 15) next = checkAchievement(next, 'COMBO_KING');
-  if (next.inventory.length >= getMaxInventory(next.upgrades)) next = checkAchievement(next, 'DATA_HOARDER');
-  return next;
+	const ar = addActionLog(state, 'DEEP_SIPHON', { item: rawItem.id, xp: finalXp, heat: heatOk, critical: isCritical });
+
+	let next = checkLevelUp({
+		...state,
+		stamina:        newStamina,
+		heat:           Math.min(100, state.heat + heatOk),
+		xp:             state.xp + finalXp,
+		reputation:     state.reputation + 2,
+		comboCount:     newCombo,
+		heatSpikeTimer: isHighValue ? 10 : (state.heatSpikeTimer ?? 0),
+		inventory:      [...state.inventory, item],
+		feedback:       { type: 'SUCCESS', gold: item.gold, item: rawItem.id, critical: isCritical, ts: Date.now() },
+		log:            ar.log,
+		logBatch:       ar.logBatch,
+	});
+	next = applyBustedCheck(next);
+	next = updateDailyChallenge(next, 'COMBO_REACH', newCombo);
+	if (rawItem.isQuantum) next = addZero(next, 'quantum_drop');
+	if (next.gold >= 10000) next = addZero(next, 'gold_10k');
+	next = tryDropEncKey(next);
+	if (isCritical)  next = checkAchievement(next, 'FIRST_BLOOD');
+	if (newCombo >= 15) next = checkAchievement(next, 'COMBO_KING');
+	if (next.inventory.length >= getMaxInventory(next.upgrades)) next = checkAchievement(next, 'DATA_HOARDER');
+	return next;
 }
 
 export function mainframeHack(state) {
-  const maxInventory = getMaxInventory(state.upgrades);
-  if (state.bustedLockout > 0)                return state;
-  if (state.layLowActive)                     return state;
-  if (state.inventory.length >= maxInventory) return state;
-  if (state.level < 8) {
-    return { ...state, log: addLog(state.log, ':: MAINFRAME_HACK REQUIRES LEVEL 8') };
-  }
-  if (state.stamina < 40) {
-    return { ...state, log: addLog(state.log, ':: MAINFRAME_HACK ABORTED — INSUFFICIENT_STAMINA') };
-  }
+	const maxInventory = getMaxInventory(state.upgrades);
+	if (state.bustedLockout > 0)                return state;
+	if (state.layLowActive)                     return state;
+	if (state.inventory.length >= maxInventory) return state;
+	if (state.level < 8) {
+		return { ...state, log: addLog(state.log, ':: MAINFRAME_HACK REQUIRES LEVEL 8') };
+	}
+	if (state.stamina < 40) {
+		return { ...state, log: addLog(state.log, ':: MAINFRAME_HACK ABORTED — INSUFFICIENT_STAMINA') };
+	}
 
-  const distMult = DISTRICTS[state.district]?.lootMultiplier ?? 1;
-  const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
-  const heatPenalty     = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
-  const bountyPen       = (state.bountyActive ?? false) ? 0.20 : 0;
-  const proto           = PROTOCOL_DEFS[state.activeProtocol ?? 'NONE'] ?? {};
-  const protoHeatMult   = proto.heatMult    ?? 1;
-  const protoSuccessMod = proto.successRateMod ?? 0;
-  const protoCreditMult = proto.creditMult  ?? 1;
-  const protoXpMult     = proto.xpMult      ?? 1;
-  const mapSuccessBonus = calculateMapModifiers(state).siphonSuccessBonus;
-  const successRate = Math.min(0.95, Math.max(0.05, 0.35 + (state.level - 1) * 0.03 - heatPenalty - bountyPen + protoSuccessMod + mapSuccessBonus));
-  const newStamina  = state.stamina - 40;
-  const heatFail    = Math.round(35 * heatMult * protoHeatMult);
+	const distMult = DISTRICTS[state.district]?.lootMultiplier ?? 1;
+	const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
+	const heatPenalty     = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
+	const bountyPen       = (state.bountyActive ?? false) ? 0.20 : 0;
+	const proto           = PROTOCOL_DEFS[state.activeProtocol ?? 'NONE'] ?? {};
+	const protoHeatMult   = proto.heatMult    ?? 1;
+	const protoSuccessMod = proto.successRateMod ?? 0;
+	const protoCreditMult = proto.creditMult  ?? 1;
+	const protoXpMult     = proto.xpMult      ?? 1;
+	const mapSuccessBonus = calculateMapModifiers(state).siphonSuccessBonus;
+	const successRate = Math.min(0.95, Math.max(0.05, 0.35 + (state.level - 1) * 0.03 - heatPenalty - bountyPen + protoSuccessMod + mapSuccessBonus));
+	const newStamina  = state.stamina - 40;
+	const heatFail    = Math.round(35 * heatMult * protoHeatMult);
 
-  if (Math.random() >= successRate) {
-    const comboBroke = (state.comboCount ?? 0) > 0;
-    let nextLog = state.log;
-    if (comboBroke) nextLog = addLog(nextLog, '!! COMBO BREAK');
-    nextLog = addLog(nextLog, `✗ MAINFRAME · HEAT+${heatFail}`);
-    return applyBustedCheck({
-      ...state,
-      stamina:    newStamina,
-      heat:       Math.min(100, state.heat + heatFail),
-      comboCount: 0,
-      logBatch:   null,
-      feedback:   { type: 'FAIL', ts: Date.now() },
-      log:        nextLog,
-    });
-  }
+	if (Math.random() >= successRate) {
+		const comboBroke = (state.comboCount ?? 0) > 0;
+		let nextLog = state.log;
+		if (comboBroke) nextLog = addLog(nextLog, '!! COMBO BREAK');
+		nextLog = addLog(nextLog, `✗ MAINFRAME · HEAT+${heatFail}`);
+		return applyBustedCheck({
+			...state,
+			stamina:    newStamina,
+			heat:       Math.min(100, state.heat + heatFail),
+			comboCount: 0,
+			logBatch:   null,
+			feedback:   { type: 'FAIL', ts: Date.now() },
+			log:        nextLog,
+		});
+	}
 
-  const loot         = getRandomLoot(VAULT_LOOT);
-  const rawItem      = makeItem(loot, distMult, state.upgrades, state.intelUpgrades ?? {});
-  const prefixHeatMult = rawItem.prefixHeatMult ?? 1;
-  const prefixXpMult   = rawItem.prefixXpMult   ?? 1;
-  const heatOk       = Math.round(25 * heatMult * protoHeatMult * prefixHeatMult);
-  const xpBonus = 1 + (state.upgrades?.xpBoost ?? 0) * 0.20;
-  const finalXp = Math.round(loot.xp * protoXpMult * prefixXpMult * xpBonus);
-  const isHighValue  = HIGH_VALUE_IDS.has(loot.id);
-  const protoRawItem = protoCreditMult !== 1
-    ? { ...rawItem, gold: Math.round(rawItem.gold * protoCreditMult) }
-    : rawItem;
-  const { item, isCritical, newCombo } = applyComboAndCrit(protoRawItem, state);
+	const loot         = getRandomLoot(VAULT_LOOT);
+	const rawItem      = makeItem(loot, distMult, state.upgrades, state.intelUpgrades ?? {});
+	const prefixHeatMult = rawItem.prefixHeatMult ?? 1;
+	const prefixXpMult   = rawItem.prefixXpMult   ?? 1;
+	const heatOk       = Math.round(25 * heatMult * protoHeatMult * prefixHeatMult);
+	
+	// 🔥 UNIVERZÁLNY XP VÝPOČET 🔥
+	const distXpMult   = DISTRICTS[state.district]?.xpMultiplier ?? 1;
+	const mapXpBonus   = calculateMapModifiers(state).xpBoost ?? 0;
+	const upgradeXpBonus = 1 + (state.upgrades?.xpBoost ?? 0) * 0.20;
+	const totalXpMult  = upgradeXpBonus * (1 + mapXpBonus);
+	const finalXp      = Math.round(loot.xp * distXpMult * protoXpMult * prefixXpMult * totalXpMult);
 
-  const ar = addActionLog(state, 'MAINFRAME', { item: rawItem.id, xp: finalXp, heat: heatOk, critical: isCritical });
+	const isHighValue  = HIGH_VALUE_IDS.has(loot.id);
+	const protoRawItem = protoCreditMult !== 1
+		? { ...rawItem, gold: Math.round(rawItem.gold * protoCreditMult) }
+		: rawItem;
+	const { item, isCritical, newCombo } = applyComboAndCrit(protoRawItem, state);
 
-  let next = checkLevelUp({
-    ...state,
-    stamina:        newStamina,
-    heat:           Math.min(100, state.heat + heatOk),
-    xp:             state.xp + finalXp,
-    reputation:     state.reputation + 8,
-    comboCount:     newCombo,
-    heatSpikeTimer: isHighValue ? 10 : (state.heatSpikeTimer ?? 0),
-    inventory:      [...state.inventory, item],
-    feedback:       { type: 'SUCCESS', gold: item.gold, item: rawItem.id, critical: isCritical, ts: Date.now() },
-    log:            ar.log,
-    logBatch:       ar.logBatch,
-  });
-  next = applyBustedCheck(next);
-  if (rawItem.isQuantum) next = addZero(next, 'quantum_drop');
-  if (next.gold >= 10000) next = addZero(next, 'gold_10k');
-  next = updateDailyChallenge(next, 'COMBO_REACH', newCombo);
-  next = tryDropEncKey(next);
-  if (isCritical)  next = checkAchievement(next, 'FIRST_BLOOD');
-  if (newCombo >= 15) next = checkAchievement(next, 'COMBO_KING');
-  if (next.inventory.length >= getMaxInventory(next.upgrades)) next = checkAchievement(next, 'DATA_HOARDER');
-  return next;
+	const ar = addActionLog(state, 'MAINFRAME', { item: rawItem.id, xp: finalXp, heat: heatOk, critical: isCritical });
+
+	let next = checkLevelUp({
+		...state,
+		stamina:        newStamina,
+		heat:           Math.min(100, state.heat + heatOk),
+		xp:             state.xp + finalXp,
+		reputation:     state.reputation + 8,
+		comboCount:     newCombo,
+		heatSpikeTimer: isHighValue ? 10 : (state.heatSpikeTimer ?? 0),
+		inventory:      [...state.inventory, item],
+		feedback:       { type: 'SUCCESS', gold: item.gold, item: rawItem.id, critical: isCritical, ts: Date.now() },
+		log:            ar.log,
+		logBatch:       ar.logBatch,
+	});
+	next = applyBustedCheck(next);
+	if (rawItem.isQuantum) next = addZero(next, 'quantum_drop');
+	if (next.gold >= 10000) next = addZero(next, 'gold_10k');
+	next = updateDailyChallenge(next, 'COMBO_REACH', newCombo);
+	next = tryDropEncKey(next);
+	if (isCritical)  next = checkAchievement(next, 'FIRST_BLOOD');
+	if (newCombo >= 15) next = checkAchievement(next, 'COMBO_KING');
+	if (next.inventory.length >= getMaxInventory(next.upgrades)) next = checkAchievement(next, 'DATA_HOARDER');
+	return next;
 }
 
 export function layLow(state) {
@@ -1385,13 +1424,21 @@ export function severConnection(state, hexId) {
 	};
 }
 
+const TRAIT_POOL = ['PARANOID', 'GREEDY', 'LOYAL', 'UNSTABLE', 'CYNIC', 'IDEALIST'];
+
+function generateInitialTraits() {
+	// 60% šanca, že agent príde s "čistým štítom", 40% že už má psychologickú batožinu
+	if (Math.random() > 0.4) return []; 
+	return [TRAIT_POOL[Math.floor(Math.random() * TRAIT_POOL.length)]];
+}
+
 export function hireRunner(state, runnerType) {
 	const configs = {
-		streetRunner: { level: 3, baseCost: 300,   requiresPrestige: 0, label: 'STREET_RUNNER'  },
-		dataThief:    { level: 5, baseCost: 800,   requiresPrestige: 0, label: 'DATA_THIEF'     },
-		infiltrator:  { level: 7, baseCost: 2500,  requiresPrestige: 0, label: 'INFILTRATOR'    },
-		fixer:        { level: 9, baseCost: 8000,  requiresPrestige: 0, label: 'FIXER'          },
-		shadowBroker: { level: 1, baseCost: 25000, requiresPrestige: 1, label: 'SHADOW_BROKER'  },
+		streetRunner: { level: 3, baseCost: 300,   requiresPrestige: 0, label: 'STREET_RUNNER',  baseStats: { stealth: 40, speed: 60, intel: 20 } },
+		dataThief:    { level: 5, baseCost: 800,   requiresPrestige: 0, label: 'DATA_THIEF',     baseStats: { stealth: 70, speed: 40, intel: 50 } },
+		infiltrator:  { level: 7, baseCost: 2500,  requiresPrestige: 0, label: 'INFILTRATOR',    baseStats: { stealth: 85, speed: 70, intel: 40 } },
+		fixer:        { level: 9, baseCost: 8000,  requiresPrestige: 0, label: 'FIXER',          baseStats: { stealth: 30, speed: 30, intel: 80 } },
+		shadowBroker: { level: 1, baseCost: 25000, requiresPrestige: 1, label: 'SHADOW_BROKER',  baseStats: { stealth: 90, speed: 90, intel: 90 } },
 	};
 
 	const cfg = configs[runnerType];
@@ -1415,6 +1462,13 @@ export function hireRunner(state, runnerType) {
 
 	if (state.gold < cost) return state;
 
+	// Generovanie základných RPG štatistík s miernou randomizáciou (+0 až +10)
+	const stats = {
+		stealth: cfg.baseStats.stealth + Math.floor(Math.random() * 11),
+		speed:   cfg.baseStats.speed   + Math.floor(Math.random() * 11),
+		intel:   cfg.baseStats.intel   + Math.floor(Math.random() * 11),
+	};
+
 	const newAgent = {
 		id: `agent_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
 		name: generateAgentName(),
@@ -1422,10 +1476,13 @@ export function hireRunner(state, runnerType) {
 		level: 1,
 		xp: 0,
 		spec: null,
+		status: 'ACTIVE', // ACTIVE, EXHAUSTED, INJURED, CAPTURED
 		fatigue: 0,
-		status: 'ACTIVE', // ACTIVE, EXHAUSTED
-		loyalty: 70 + Math.floor(Math.random() * 30),
 		stress: 0,
+		loyalty: 50 + Math.floor(Math.random() * 31), // Základ 50-80
+		stats: stats,
+		traits: generateInitialTraits(),
+		injuries: [],
 		missions: 0,
 		createdAt: Date.now()
 	};
@@ -1920,8 +1977,10 @@ export function tick(state) {
 		shadowBroker: Math.max(1, Math.round((DEV_MODE ? 30 : 7200) * hwSpeedMult))
 	};
 	
-	const basePayouts = { streetRunner: 2, dataThief: 8, infiltrator: 35, fixer: 150, shadowBroker: 600 };
-	const baseHeats = { streetRunner: 1, dataThief: 2, infiltrator: 3, fixer: 1, shadowBroker: 0 };
+// --- OPRAVA ZÁROBKOV A HEATU ---
+// Agenti musia zarábať toľko, aby pokryli svoje liečenie a generovali profit.
+  const basePayouts = { streetRunner: 15, dataThief: 60, infiltrator: 250, fixer: 1000, shadowBroker: 5000 };
+  const baseHeats = { streetRunner: 0.5, dataThief: 1, infiltrator: 2, fixer: 1, shadowBroker: 0 }; // Znížený heat
 
 	let totalAgentIncome = 0;
 	let totalAgentHeat = 0;
@@ -1964,12 +2023,12 @@ export function tick(state) {
 				totalAgentHeat += baseHeats[updated.role] * hwHeatMult * specHeatMult * stealthMult;
 
 				// Únava a XP
-				updated.fatigue += 15; // +15% fatigue per cycle
-				if (updated.fatigue >= 100) {
-					updated.fatigue = 100;
-					updated.status = 'EXHAUSTED';
-					next.log = addLog(next.log, `[!] EXHAUSTION :: ${updated.name} goes offline to recover.`);
-				}
+				updated.fatigue += 3; // Bolo 15! Teraz agent vydrží cca 33 cyklov, než odpadne
+        if (updated.fatigue >= 100) {
+          updated.fatigue = 100;
+          updated.status = 'EXHAUSTED';
+          next.log = addLog(next.log, `[!] EXHAUSTION :: ${updated.name} goes offline to recover.`);
+        }
 
 				updated.xp += 10;
 				if (updated.xp >= 100 && !updated.spec) {
@@ -2030,6 +2089,27 @@ export function tick(state) {
 			next = { ...next, autoFencerTick: newAutoTick };
 		}
 	}
+
+  // --- MIGRÁCIA AGENTOV (Legacy podpora) ---
+	if (next.agents && next.agents.length > 0) {
+		next.agents = next.agents.map(a => {
+			let migrated = { ...a };
+			if (!migrated.stats) {
+				migrated.stats = {
+					stealth: 50 + Math.floor(Math.random() * 20),
+					speed: 50 + Math.floor(Math.random() * 20),
+					intel: 50 + Math.floor(Math.random() * 20),
+				};
+			}
+			if (!migrated.traits) {
+				// Dáme im náhodný trait, aby nevyzerali smutne
+				const tPool = ['PARANOID', 'GREEDY', 'LOYAL', 'UNSTABLE', 'CYNIC', 'IDEALIST'];
+				migrated.traits = Math.random() > 0.4 ? [] : [tPool[Math.floor(Math.random() * tPool.length)]];
+			}
+			return migrated;
+		});
+	}
+	// -----------------------------------------
 
 	// ── COOLDOWN TICKY ─────────────────────────────────────────────────
 	if (next.darkMarketCooldown > 0) next = { ...next, darkMarketCooldown: next.darkMarketCooldown - 1 };
@@ -2094,11 +2174,12 @@ export function tick(state) {
 		}
 	}
 
-	// ── BETRAYAL (Agent System) ───────────────────────────────────────────────
-	if (!next.isIdle && !next.idlePromptActive) {
-		const activeAgents = (next.agents || []).filter(a => a.status === 'ACTIVE');
-		if (next.heat >= 70 && activeAgents.length > 0) {
-			const perRunnerChance = DEV_MODE ? 0.005 : 0.0005;
+  // ── BETRAYAL (Agent System) ───────────────────────────────────────────────
+  if (!next.isIdle && !next.idlePromptActive) {
+    const activeAgents = (next.agents || []).filter(a => a.status === 'ACTIVE');
+    if (next.heat >= 70 && activeAgents.length > 0) {
+      // V DEV_MODE to bolo 0.005 (0.5% KAŽDÚ SEKUNDU). Znížené na 0.0002.
+      const perRunnerChance = DEV_MODE ? 0.0002 : 0.00005;
 			
 			if (Math.random() < activeAgents.length * perRunnerChance) {
 				// Vyberieme agenta, ideálne toho s najnižšou lojalitou (alebo náhodného)

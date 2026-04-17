@@ -24,22 +24,26 @@ function calcMaxInventory(upgrades) {
   return 12 + (upgrades?.voidDrive ?? 0) * 2;
 }
 
+// ==========================================
+// 1. CONSTANTS & UTILS
+// ==========================================
+
 // Helper pre CSS triedy
 const cn = (...classes) => classes.filter(Boolean).join(' ');
 
 // ── INITIAL STATE ─────────────────────────────────────────────────────────────
 
 const FRESH_STATE = {
-  gold:               100000,
-  reputation:         10000,
+  gold:               0,
+  reputation:         0,
   heat:               0,
   stamina:            100,
-  level:              10,
+  level:              0,
   xp:                 0,
   prestige:           0,
   prestigeMultiplier: 1.0,
-  totalGoldEarned:    100000,
-  runGoldEarned:      100000000,
+  totalGoldEarned:    0,
+  runGoldEarned:      0,
   inventory:          [],
   log:                [],
   lastTickTime:       Date.now(),
@@ -102,7 +106,13 @@ const FRESH_STATE = {
   agents: [],
 };
 
-const DEV_START = { ...FRESH_STATE, gold: 50000, reputation: 50, level: 5, runGoldEarned: 50000, totalGoldEarned: 50000 };
+const DEV_START = {
+  ...FRESH_STATE,
+  gold:               100000,        // veľa peňazí
+  reputation:         10000,         // vysoká reputácia
+  level:              10,            // vysoký level
+  runGoldEarned:      100000000,     // veľa zarobené (pre prestíž)
+  totalGoldEarned:    100000,};
 
 function loadInitialState() {
   try {
@@ -589,7 +599,9 @@ function fmtElapsed(seconds) {
   return `${m}m`;
 }
 
-// ── UI COMPONENTS ─────────────────────────────────────────────────────────────
+// ==========================================
+// 2. PURE UI COMPONENTS
+// ==========================================
 
 function Icon({ component: C, size = 11, color = 'var(--muted)', style: extra }) {
   return (
@@ -634,14 +646,20 @@ function Bar({ pct, variant = 'default', thin = false }) {
   );
 }
 
-function Tab({ label, active, onClick }) {
+function Tab({ label, active, onClick, disabled = false, className = '' }) {
   return (
-      <button 
-          onClick={onClick} 
-          className={cn('tab', active && 'tab-active')}
-      >
-          {label}
-      </button>
+    <button 
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      className={cn(
+        'tab', 
+        active && 'tab-active',
+        disabled && 'opacity-40 cursor-not-allowed',
+        className
+      )}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -1302,7 +1320,9 @@ function OfflinePopup({ report, onDismiss }) {
   );
 }
 
-// ── APP ───────────────────────────────────────────────────────────────────────
+// ==========================================
+// 3. MAIN APP STATE & EFFECTS
+// ==========================================
 
 export default function App() {
   const [state, dispatch]   = useReducer(reducer, INITIAL_STATE);
@@ -1525,7 +1545,10 @@ export default function App() {
     return () => clearInterval(id);
   }, [state.heat >= 95]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── derived ────────────────────────────────────────────────────────────────
+  // ==========================================
+   // 4. RENDERERS (Sub-functions)
+   // ==========================================
+
   const effectiveMaxStamina = 100 + (state.upgrades.neuralBoost ?? 0) * 10;
   const maxInventory = calcMaxInventory(state.upgrades);
   const xpNeeded    = xpRequired(state.level);
@@ -1619,7 +1642,7 @@ export default function App() {
     ? hotItems.reduce((a, b) => a.cooldownRemaining > b.cooldownRemaining ? a : b)
     : null;
 
-  const SORT_MODES = ['TIME', 'VALUE', 'COLD'];
+  const SORT_MODES = ['VALUE', 'TIME', 'COLD'];
   const sortedInventory = [...state.inventory].sort((a, b) => {
     if (inventorySort === 'VALUE')    return b.gold - a.gold;
     if (inventorySort === 'COLD') {
@@ -1669,7 +1692,10 @@ export default function App() {
   .filter(([_, spec]) => spec === 'PENDING')
   .map(([type]) => type);
 
-  // ── RENDER ─────────────────────────────────────────────────────────────────
+  // ==========================================
+  // 5. MAIN RETURN (Layout Grid)
+  // ==========================================
+
   return (
     <div 
       className={`game-root ${heatGlitchClass} ${heatDangerClass}`.trim()}
@@ -1916,19 +1942,17 @@ export default function App() {
 
       {/* ── MOBILE TAB BAR ── */}
       {isMobile && (
-        <div className="flex bg-surface-low border-b-2 border-surface-high sticky top-[44px] z-10">
+        <div className="fixed bottom-0 left-0 right-0 bg-surface-low border-t border-amber/30 z-50 flex justify-between px-2 py-2 pb-safe">
           {[
             { id: 'DASH', label: 'DASH' }, 
             { id: 'OPS', label: 'OPS' }, 
-            { id: 'AGENCY', label: isUnlocked(state, 'agency') ? 'AGN' : 'AGN [3]' },
-            { id: 'UPGRADES', label: isUnlocked(state, 'upgrades_tab') ? 'UPG' : 'UPG [3]' }, 
-            { id: 'NET', label: isUnlocked(state, 'district') ? 'NET' : 'NET [5]' }, 
+            { id: 'AGENCY', label: isUnlocked(state, 'agency') ? 'AGN' : 'AGN', locked: !isUnlocked(state, 'agency')},
+            { id: 'UPGRADES', label: isUnlocked(state, 'upgrades_tab') ? 'UPG' : 'UPG', locked: !isUnlocked(state, 'upgrades_tab')}, 
+            { id: 'NET', label: isUnlocked(state, 'district') ? 'NET' : 'NET', locked: !isUnlocked(state, 'district')}, 
             { id: 'SETTINGS', label: 'SYS' }
           ].map(t => {
-            const isLocked = (t.id === 'AGENCY' && !isUnlocked(state, 'agency')) ||
-                            (t.id === 'UPGRADES' && !isUnlocked(state, 'upgrades_tab')) ||
-                            (t.id === 'NET' && !isUnlocked(state, 'district'));
-
+            const isLocked = t.locked === true;
+            
             return (
               <button 
                 key={t.id} 
@@ -1941,12 +1965,14 @@ export default function App() {
                   }
                 }}
                 className={cn(
-                  "tab", 
+                  "tab flex-1 text-center py-3",
                   mobileTab === t.id && "tab-active",
-                  isLocked && "opacity-50 cursor-not-allowed"
+                  isLocked && "opacity-40 cursor-not-allowed"
                 )}
+                disabled={isLocked}
               >
                 {t.label}
+                {isLocked && t.req && <span className="text-[8px] block opacity-50">[LVL {t.req}]</span>}
               </button>
             );
           })}
@@ -1955,16 +1981,15 @@ export default function App() {
 
       {/* ── SHAKE WRAPPER ── */}
       <div 
-          className={cn("flex-1 min-h-0 flex flex-col", shaking && "animate-shake")}
-          onAnimationEnd={() => setShaking(false)}
+        className={cn("flex-1 min-h-0 flex flex-col", shaking && "animate-shake")}
+        onAnimationEnd={() => setShaking(false)}
       >
-          {/* Hlavný Grid */}
-          <div className={isMobile ? "game-grid-mobile" : "game-grid"}>
+        {/* Hlavný Grid - Všimni si pb-24 na mobile, aby taby dole nezakryli obsah */}
+        <div className={isMobile ? "flex flex-col flex-1 overflow-y-auto scroll-none pb-24" : "game-grid"}>
 
           {/* ── LEFT COL: DASHBOARD ── */}
           {(!isMobile || mobileTab === 'DASH') && (
-            // Na mobile vypneme overflow-y-auto, nech to riadi parent vyššie
-            <div className={cn("game-col", isMobile && "h-auto overflow-visible p-0 bg-transparent border-none")}>
+            <div className={isMobile ? "w-full flex flex-col gap-4 p-8" : "game-col"}>
                   
                   {/* ── SLEEK OPERATIVE HEADER ── */}
                   <div className="mb-20">
@@ -2263,99 +2288,45 @@ export default function App() {
                           </div>
                       </div>
                   )}
-
-                  {isMobile && (
-                    <div className="mt-20">
-                      <div className="flex items-center justify-between mb-10 flex-wrap gap-4">
-                        <div className="flex items-center gap-4">
-                          <span className="text-md text-muted tracking-widest uppercase">:: INVENTORY</span>
-                          <span className={cn("text-md", invFull ? "text-red" : "text-muted")}>
-                            {state.inventory.length}/{maxInventory}
-                          </span>
-                        </div>
-                        {state.inventory.length > 0 && (
-                          <button 
-                            onClick={() => setInventorySort(m => {
-                              const idx = SORT_MODES.indexOf(m);
-                              return SORT_MODES[(idx + 1) % SORT_MODES.length];
-                            })}
-                            className="bg-transparent border border-muted-full text-amber px-2 py-1 text-xs tracking-wider"
-                          >
-                            SORT: [{inventorySort}]
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        {sortedInventory.map(item => {
-                          const rarityColor = item.isQuantum ? 'var(--gold)' 
-                            : item.gold > 300 ? 'var(--gold)'
-                            : item.gold > 100 ? 'var(--purple)'
-                            : item.gold > 20 ? 'var(--cyan)'
-                            : 'var(--amber)';
-                          const baseItemId = item.id.replace(/^(MILITARY|QUANTUM|CORRUPTED)_/, '');
-                          const coolPct = item.isHot && item.cooldown
-                            ? Math.max(0, Math.min(100, (1 - item.cooldownRemaining / item.cooldown) * 100))
-                            : 100;
-
-                          return (
-                            <div key={item.instanceId} className="bg-surface-low p-8">
-                              <div className="flex justify-between items-center mb-4">
-                                <span className="text-sm font-bold" style={{ color: rarityColor }}>
-                                  {item.id}
-                                </span>
-                                <Icon component={Cpu} size={10} color={item.isHot ? 'var(--orange)' : 'var(--green)'} />
-                              </div>
-                              {ITEM_FLAVOR[baseItemId] && (
-                                <div className="text-xs text-muted mb-4 leading-relaxed">
-                                  {ITEM_FLAVOR[baseItemId]}
-                                </div>
-                              )}
-                              <div className="flex justify-between items-center">
-                                <span className="text-xs text-muted">{item.gold} CR</span>
-                                <span className={cn("text-xs font-bold", item.isHot ? "text-orange" : "text-green")}>
-                                  {item.isHot ? fmtCooldown(item.cooldownRemaining) : 'COLD'}
-                                </span>
-                              </div>
-                              {item.isHot && (
-                                <div className="w-full h-1 bg-bg mt-4">
-                                  <div className="h-full bg-orange transition-all duration-1000" style={{ width: `${coolPct}%` }} />
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
               </div>
           )}
 
           
           {/* ── CENTER COL: TABS ── */}
-          {(!isMobile || mobileTab === 'OPS' || mobileTab === 'AGENCY' || mobileTab === 'NET' || mobileTab === 'UPGRADES' || mobileTab === 'SETTINGS') && (
-            <div className="game-col-center h-auto overflow-visible">
+          {(!isMobile || mobileTab !== 'DASH') && (
+            <div className={cn("game-col-center", isMobile && "h-auto p-0 border-none bg-transparent")}>
               
               {/* TABS HEADER */}
               {!isMobile && (
-                <div className="flex gap-2 mb-14">
-                  <Tab label="OPS" active={activeTab === 'OPERATIONS'} onClick={() => setActiveTab('OPERATIONS')} />
+                <div className="flex gap-2 mb-14 border-b border-surface-high pb-0">
                   <Tab 
-                    label={isUnlocked(state, 'agency') ? 'AGENCY' : 'AGN [LVL 3]'}
+                    label="OPS" 
+                    active={activeTab === 'OPERATIONS'} 
+                    onClick={() => setActiveTab('OPERATIONS')} 
+                  />
+                  <Tab 
+                    label="AGENCY" 
                     active={activeTab === 'AGENCY'} 
-                    onClick={() => isUnlocked(state, 'agency') && setActiveTab('AGENCY')} 
+                    disabled={!isUnlocked(state, 'agency')}
+                    onClick={() => setActiveTab('AGENCY')} 
                   />
                   <Tab 
-                    label={isUnlocked(state, 'upgrades_tab') ? 'UPGRADES' : 'UPG [LVL 3]'}
+                    label="UPGRADES" 
                     active={activeTab === 'UPGRADES'} 
-                    onClick={() => isUnlocked(state, 'upgrades_tab') && setActiveTab('UPGRADES')} 
+                    disabled={!isUnlocked(state, 'upgrades_tab')}
+                    onClick={() => setActiveTab('UPGRADES')} 
                   />
                   <Tab 
-                    label={isUnlocked(state, 'district') ? 'NETWORK' : 'NET [LVL 5]'} 
+                    label="NETWORK" 
                     active={activeTab === 'NETWORK'} 
-                    onClick={() => isUnlocked(state, 'district') && setActiveTab('NETWORK')} 
+                    disabled={!isUnlocked(state, 'district')}
+                    onClick={() => setActiveTab('NETWORK')} 
                   />
-                  <Tab label="SETTINGS" active={activeTab === 'SETTINGS'} onClick={() => setActiveTab('SETTINGS')} />
+                  <Tab 
+                    label="SETTINGS" 
+                    active={activeTab === 'SETTINGS'} 
+                    onClick={() => setActiveTab('SETTINGS')} 
+                  />
                 </div>
               )}
 
@@ -2574,11 +2545,11 @@ export default function App() {
                       state.log.map((entry, i) => {
                         const upper = entry.toUpperCase();
                         let colorClass = 'text-muted';
-                        if (upper.includes('[BUSTED]') || upper.includes('RAID') || upper.includes('SEIZED') || upper.includes('LOSE')) colorClass = 'text-red';
+                        if (entry.includes('[ZERO >>]')) colorClass = 'text-zero-message';
+                        else if (upper.includes('[BUSTED]') || upper.includes('RAID') || upper.includes('SEIZED') || upper.includes('LOSE')) colorClass = 'text-red';
                         else if (upper.includes('WARNING') || upper.includes('BOUNTY') || upper.includes('ABORTED')) colorClass = 'text-orange';
                         else if (upper.includes('SUCCESS') || upper.includes('CAPTURED') || upper.includes('SOLD') || upper.includes('RESTORED') || upper.includes('CLEARED')) colorClass = 'text-green';
                         else if (upper.includes('LEVEL UP') || upper.includes('PROTOCOL') || upper.includes('RECOVERED')) colorClass = 'text-cyan';
-                        else if (entry.includes('[ZERO >>]')) colorClass = 'text-green'; // Special case
 
                         return (
                           <div
@@ -2603,9 +2574,22 @@ export default function App() {
             {/* ── AGENCY TAB ── */}
             {activeTab === 'AGENCY' && isUnlocked(state, 'agency') && (() => {
               
-              const getHealCost = (fatigue) => Math.max(100, Math.floor(5000 * ((fatigue || 0) / 100)));
+              const getHealCost = (agent) => {
+                const base = agent.role === 'streetRunner' ? 150 :
+                       agent.role === 'dataThief' ? 600 :
+                       agent.role === 'infiltrator' ? 2000 : 6000;
+                return Math.max(50, Math.floor(base * ((agent.fatigue || 0) / 100)));
+              };
 
-              // AgentCard Component
+              const TRAIT_CONFIG = {
+                PARANOID: { color: 'var(--purple)', label: 'PARANOID' },
+                GREEDY:   { color: 'var(--gold)', label: 'GREEDY' },
+                LOYAL:    { color: 'var(--green)', label: 'LOYAL' },
+                UNSTABLE: { color: 'var(--orange)', label: 'UNSTABLE' },
+                CYNIC:    { color: 'var(--cyan)', label: 'CYNIC' },
+                IDEALIST: { color: 'var(--amber)', label: 'IDEALIST' },
+              };
+              
               const AgentCard = ({ agent }) => {
                 const isPending = agent.spec === 'PENDING';
                 const isTraining = agent.status === 'TRAINING';
@@ -2615,63 +2599,89 @@ export default function App() {
                 const xpNeeded = (agent.level || 1) * 1000;
                 const xpPercent = ((agent.xp || 0) / xpNeeded) * 100;
                 
-                // Status color mapping
                 let statusColorClass = 'text-muted';
                 if (isActive) statusColorClass = 'text-green';
                 else if (isTraining) statusColorClass = 'text-purple';
                 else if (agent.status === 'ON_MISSION') statusColorClass = 'text-cyan';
-                else if (agent.status === 'EXHAUSTED' || agent.status === 'INJURED') statusColorClass = 'text-red';
-
+                else if (agent.status === 'EXHAUSTED' || agent.status === 'INJURED' || agent.status === 'CAPTURED') statusColorClass = 'text-red animate-pulse';
+              
                 return (
-                  <div className="card agent-card p-12">
-                    {/* Header */}
-                    <div className="flex-between items-start mb-12">
-                      <div className="overflow-hidden pr-8">
-                        <div 
-                          className={cn("text-lg font-bold", isPending ? "text-muted" : "text-white")}
-                          style={{ whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}
-                        >
-                          {agent.name}
+                  <div className="card agent-card p-12 flex flex-col justify-between">
+                    <div>
+                      {/* ── HEADER ── */}
+                      <div className="flex-between items-start mb-8">
+                        <div className="overflow-hidden pr-8">
+                          <div 
+                            className={cn("text-lg font-bold tracking-wide", isPending ? "text-muted" : "text-white")}
+                            style={{ whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}
+                          >
+                            {agent.name}
+                          </div>
+                          <div className={cn("text-[10px] font-bold tracking-widest mt-1", statusColorClass)}>
+                            [{agent.status}]
+                          </div>
                         </div>
-                        <div className={cn("text-sm font-bold mt-2", statusColorClass)}>
-                          [{agent.status}]
+                        <div className="badge badge-amber font-bold flex-shrink-0">LVL {agent.level || 1}</div>
+                      </div>
+              
+                      {/* ── TRAITS ── */}
+                      {agent.traits && agent.traits.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-8">
+                          {agent.traits.map(trait => {
+                            const cfg = TRAIT_CONFIG[trait] || { color: 'var(--muted)', label: trait };
+                            return (
+                              <span 
+                                key={trait} 
+                                className="text-[8px] font-bold tracking-widest px-1 py-0.5 border"
+                                style={{ color: cfg.color, borderColor: cfg.color, backgroundColor: `${cfg.color}15` }}
+                              >
+                                {cfg.label}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+              
+                      {/* ── STATS ── */}
+                      {agent.stats && (
+                        <div className="flex justify-between items-center mb-10 pb-6 border-b border-surface-low text-[10px] font-mono tracking-widest text-muted">
+                          <div>STL: <span className="text-white">{agent.stats.stealth}</span></div>
+                          <div>SPD: <span className="text-white">{agent.stats.speed}</span></div>
+                          <div>INT: <span className="text-white">{agent.stats.intel}</span></div>
+                        </div>
+                      )}
+              
+                      {/* ── BARS ── */}
+                      <div className="mb-4">
+                        <div className="mb-6">
+                          <div className="flex-between text-[10px] tracking-wider mb-2">
+                            <span className={agent.fatigue > 70 ? 'text-red font-bold' : 'text-muted'}>FTG</span>
+                            <span className={agent.fatigue > 70 ? 'text-red' : 'text-muted'}>{agent.fatigue || 0} / 100</span>
+                          </div>
+                          <Bar pct={agent.fatigue || 0} variant={agent.fatigue > 70 ? "ftg" : "default"}/>
+                        </div>
+                        
+                        <div className="mb-6">
+                          <div className="flex-between text-[10px] tracking-wider mb-2">
+                            <span className="text-muted">XP</span>
+                            <span className="text-muted">{agent.xp || 0} / {xpNeeded}</span>
+                          </div>
+                          <Bar pct={xpPercent} variant="xp"/>
                         </div>
                       </div>
-                      <div className="badge badge-amber font-bold flex-shrink-0">LVL {agent.level || 1}</div>
                     </div>
-
-                          {/* Bars - používame jednotný Bar komponent */}
-                          <div className="mb-8">
-                            {/* FTG Bar */}
-                            <div className="mb-6">
-                              <div className="flex-between text-xs mb-2">
-                                <span className={agent.fatigue > 70 ? 'text-red font-bold' : 'text-muted'}>FTG</span>
-                                <span className={agent.fatigue > 70 ? 'text-red' : 'text-muted'}>{agent.fatigue || 0} / 100</span>
-                              </div>
-                              <Bar pct={agent.fatigue || 0} variant={agent.fatigue > 70 ? "ftg" : "default"}/>
-                            </div>
-                            
-                            {/* XP Bar */}
-                            <div className="mb-6">
-                              <div className="flex-between text-xs mb-2">
-                                <span className="text-muted">XP</span>
-                                <span className="text-muted">{agent.xp || 0} / {xpNeeded}</span>
-                              </div>
-                              <Bar pct={xpPercent} variant="xp"/>
-                            </div>
-                          </div>
-
-                    {/* Actions */}
-                    {!isPending && (
-                      <div className="flex gap-6 mt-12 pt-12" style={{ borderTop: '1px solid var(--surface-low)' }}>
-                        {isTired && agent.status !== 'ON_MISSION' && (
+              
+                    {/* ── ACTIONS ── */}
+                    {!isPending ? (
+                      <div className="flex gap-4 mt-6 pt-6" style={{ borderTop: '1px solid var(--surface-low)' }}>
+                        {isTired && agent.status !== 'ON_MISSION' && agent.status !== 'CAPTURED' && (
                           <button 
                             onClick={() => dispatch({ type: 'HEAL_AGENT', agentId: agent.id })}
-                            disabled={state.gold < healCost}
-                            className={cn("btn btn-xs flex-1 text-center", state.gold >= healCost ? "btn-danger" : "btn-disabled")}
+                            disabled={state.gold < getHealCost(agent)}
+                            className={cn("btn btn-xs flex-1 text-center", state.gold >= getHealCost(agent) ? "btn-danger" : "btn-disabled")}
                             style={{ margin: 0 }}
                           >
-                            HEAL ({healCost} CR)
+                            HEAL [{getHealCost(agent)}]
                           </button>
                         )}
                         {isActive && !isTired && (
@@ -2686,12 +2696,30 @@ export default function App() {
                         {isTraining && (
                           <button 
                             onClick={() => dispatch({ type: 'STOP_TRAINING', agentId: agent.id })}
-                            className="btn btn-xs btn-danger flex-1 text-center"
+                            className="btn btn-xs flex-1 text-center border-red text-red hover:bg-red/20"
                             style={{ margin: 0 }}
                           >
                             HALT
                           </button>
                         )}
+                      </div>
+                    ) : (
+                      // ── PENDING PROMOTION BUTTONS ──
+                      <div className="flex gap-4 mt-6 pt-6" style={{ borderTop: '1px solid var(--amber)' }}>
+                        <button 
+                          onClick={() => dispatch({ type: 'SET_RUNNER_SPEC', runnerType: agent.role, spec: 'GREEDY' })}
+                          className="btn btn-xs flex-1 text-center bg-amber text-bg hover:bg-gold"
+                          style={{ margin: 0, border: 'none' }}
+                        >
+                          [GREEDY] +50% CR
+                        </button>
+                        <button 
+                          onClick={() => dispatch({ type: 'SET_RUNNER_SPEC', runnerType: agent.role, spec: 'SHADOW' })}
+                          className="btn btn-xs flex-1 text-center bg-purple text-white hover:bg-purple-full"
+                          style={{ margin: 0, border: 'none' }}
+                        >
+                          [SHADOW] -50% HEAT
+                        </button>
                       </div>
                     )}
                   </div>
@@ -3034,7 +3062,7 @@ export default function App() {
                   })}
                 </>)}
 
-                {/* PRESTIGE CARD IN SETTINGS */}
+                {/* PRESTIGE */}
                 <div className="panel-header mb-8">PRESTIGE</div>
                 <div className="card-bordered border-amber/20 mb-16">
                   <div className={cn('flex items-center gap-6 text-md font-bold mb-8', canPrestige ? 'text-orange' : 'text-muted')}>
@@ -3048,7 +3076,7 @@ export default function App() {
                     Keeps: REP, intel upgrades, prestige count.
                   </div>
                   
-                  <div className="bg-surface-low p-8 mb-8 border border-surface-high text-md font-mono">
+                  <div className="bg-surface-low p-8 mb-8 border border-surface-high text-sm font-mono">
                     <div className="flex-between mb-4">
                       <span className="text-amber">Level Status:</span>
                       <span className={state.level >= 10 ? 'text-green' : 'text-amber'}>{state.level}/10</span>
@@ -3061,18 +3089,24 @@ export default function App() {
                     </div>
                   </div>
 
+                  <div className="flex-between text-sm text-amber mb-12">
+                    <span>Lifetime_Yield:</span>
+                    <span className="text-amber font-bold">{(state.totalGoldEarned ?? 0).toLocaleString()} CR</span>
+                  </div>
+
                   <button
                     disabled={!canPrestige}
-                    onClick={() => dispatch({ type: 'SHOW_PRESTIGE_MODAL' })}
+                    onClick={() => {
+                      dispatch({ type: 'SHOW_PRESTIGE_MODAL' });
+                    }}
                     className={cn('btn w-full font-black text-center', canPrestige ? 'btn-amber animate-pulse' : 'btn-disabled')}
-                    style={canPrestige ? { borderColor: 'var(--yellow)', color: 'var(--yellow)' } : {}}
+                    style={canPrestige ? { borderColor: 'var(--orange)', color: 'var(--orange)' } : {}}
                   >
                     {canPrestige 
                       ? `PRESTIGE → RUN #${(state.prestige ?? 0) + 1} [x${(1 + ((state.prestige ?? 0) + 1) * 0.25).toFixed(2)}]` 
                       : 'PRESTIGE [LOCKED]'}
                   </button>
                 </div>
-
                 {/* SAVE */}
                 <span className="panel-header mt-14 mb-8">SAVE_SYSTEM</span>
 
@@ -3166,83 +3200,121 @@ export default function App() {
           )}
 
           {/* ── RIGHT COL: INVENTORY ── */}
-          {(!isMobile && mobileTab === 'DASH') && (
-            <div className="game-col-right" style={{ width: '320px', height: '100%', overflowY: 'auto' }}>
-                <div className="bg p-16">
-                    
-                    {state.inventory.some(i => i.isQuantum) && (
-                        <div className="text-sm font-bold bg-surface-low tracking-widest text-gold mb-10 p-6 bg-gold/10 border-l-4 border-r-4 border-gold text-center animate-gold">
-                            :: QUANTUM CORE DETECTED ::
-                        </div>
-                    )}
+          {(!isMobile || mobileTab === 'DASH') && (
+            <div 
+              className={cn("game-col-right", isMobile && "w-full h-auto overflow-visible p-8 border-t border-surface-high mt-8")} 
+              style={!isMobile ? { width: '320px', height: '100%', overflowY: 'auto' } : {}}
+            >
+              <div className={!isMobile ? "bg-transparent" : ""}>
+                
+                {state.inventory.some(i => i.isQuantum) && (
+                  <div className="text-md font-bold bg-transparent tracking-widest text-gold mb-10 p-3 border border-gold text-center animate-pulse">
+                    :: QUANTUM CORE DETECTED ::
+                  </div>
+                )}
 
-                    <div className="flex items-center justify-between mb-10 flex-wrap gap-4">
-                        <div className="flex items-center gap-4">
-                            <span className="text-md text-amber tracking-widest uppercase">:: INVENTORY</span>
-                            <span className={cn("text-md", invFull ? "text-red" : "text-amber-dark")}>
-                                {state.inventory.length}/{maxInventory}
+                <div className="flex items-center justify-between mb-12 border-b border-surface-high pb-4">
+                  <span className="text-sm font-bold text-amber tracking-widest uppercase">
+                    :: INVENTORY <span className={invFull ? "text-red animate-pulse" : "text-muted"}>[{state.inventory.length}/{maxInventory}]</span>
+                  </span>
+                  
+                  {state.inventory.length > 0 && (
+                    <button 
+                      onClick={() => setInventorySort(m => {
+                        const idx = SORT_MODES.indexOf(m);
+                        return SORT_MODES[(idx + 1) % SORT_MODES.length];
+                      })}
+                      className="btn btn-xs"
+                      style={{ margin: 0, width: 'auto' }}
+                    >
+                      SORT: [{inventorySort}]
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  {sortedInventory.map(item => {
+                    // RARITY PODĽA SKUTOČNEJ HODNOTY (už s district multiplikátorom a prefixami)
+                    const actualGold = item.gold;
+                    const isQuantum = item.isQuantum || item.id.includes('QUANTUM_');
+                    
+                    let rarityColor = 'var(--amber)'; // default COMMON
+                    
+                    if (isQuantum || actualGold >= 500) {
+                      rarityColor = 'var(--gold)';
+                    } else if (actualGold >= 200) {
+                      rarityColor = 'var(--gold)';
+                    } else if (actualGold >= 100) {
+                      rarityColor = 'var(--purple)';
+                    } else if (actualGold >= 50) {
+                      rarityColor = 'var(--cyan)';
+                    } else if (actualGold >= 20) {
+                      rarityColor = 'var(--cyan)';
+                    } else {
+                      rarityColor = 'var(--amber)';
+                    }
+                    
+                    // Prefix detection pre špeciálne efekty
+                    const hasMilitary = item.id.includes('MILITARY_');
+                    const hasQuantumPrefix = item.id.includes('QUANTUM_');
+                    const hasCorrupted = item.id.includes('CORRUPTED_');
+                    
+                    const baseItemId = item.id.replace(/^(MILITARY|QUANTUM|CORRUPTED)_/, '');
+                    const coolPct = item.isHot && item.cooldown
+                      ? Math.max(0, Math.min(100, (1 - item.cooldownRemaining / item.cooldown) * 100))
+                      : 100;
+
+                    return (
+                      <div 
+                        key={item.instanceId} 
+                        className="bg-bg border p-8 relative overflow-hidden"
+                        style={{ borderColor: rarityColor, borderLeftWidth: '4px' }}
+                      >
+                        {/* Prefix badge */}
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[11px] font-bold tracking-widest uppercase" style={{ color: rarityColor }}>
+                              {item.id}
                             </span>
+                            {hasMilitary && <span className="text-[8px] px-1 bg-green/20 text-green border border-green-full">MIL</span>}
+                            {hasQuantumPrefix && <span className="text-[8px] px-1 bg-gold/20 text-gold border border-gold-full">QNT</span>}
+                            {hasCorrupted && <span className="text-[8px] px-1 bg-red/20 text-red border border-red-full">CRPT</span>}
+                          </div>
+                          <Icon component={Cpu} size={11} color={item.isHot ? 'var(--orange)' : 'var(--green)'} style={{ marginTop: 2 }} />
                         </div>
                         
-                        {state.inventory.length > 0 && (
-                            <button 
-                                onClick={() => setInventorySort(m => {
-                                    const idx = SORT_MODES.indexOf(m);
-                                    return SORT_MODES[(idx + 1) % SORT_MODES.length];
-                                })}
-                                className="bg-surface-high border text-amber px-2 py-1 text-xs tracking-wider hover:border-amber hover:text-amber"
-                            >
-                                SORT: [{inventorySort}]
-                            </button>
+                        {ITEM_FLAVOR[baseItemId] && (
+                          <div className="text-[9px] text-muted mb-6 italic opacity-60">
+                            "{ITEM_FLAVOR[baseItemId]}"
+                          </div>
                         )}
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                        {sortedInventory.map(item => {
-                            const rarityColor = item.isQuantum ? 'var(--gold)' 
-                                : item.gold > 300 ? 'var(--gold)'
-                                : item.gold > 100 ? 'var(--purple)'
-                                : item.gold > 20 ? 'var(--cyan)'
-                                : 'var(--amber)';
-                            
-                            const baseItemId = item.id.replace(/^(MILITARY|QUANTUM|CORRUPTED)_/, '');
-                            const coolPct = item.isHot && item.cooldown
-                                ? Math.max(0, Math.min(100, (1 - item.cooldownRemaining / item.cooldown) * 100))
-                                : 100;
-
-                            return (
-                                <div key={item.instanceId} className="bg-surface-high p-8">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <span className="text-sm font-bold" style={{ color: rarityColor }}>
-                                            {item.id}
-                                        </span>
-                                        <Icon component={Cpu} size={10} color={item.isHot ? 'var(--orange)' : 'var(--green)'} />
-                                    </div>
-                                    
-                                    {ITEM_FLAVOR[baseItemId] && (
-                                        <div className="text-xs text-muted mb-4 leading-relaxed">
-                                            {ITEM_FLAVOR[baseItemId]}
-                                        </div>
-                                    )}
-                                    
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-xs text-amber">{item.gold} CR</span>
-                                        <span className={cn("text-xs font-bold", item.isHot ? "text-orange" : "text-green")}>
-                                            {item.isHot ? fmtCooldown(item.cooldownRemaining) : 'COLD'}
-                                        </span>
-                                    </div>
-                                    
-                                    {item.isHot ? (
-                                      <Bar pct={coolPct} variant="ftg"/>
-                                    ) : (
-                                      // Voliteľné: Ak chceš vidieť prázdny bar aj pre cold items
-                                      // <Bar pct={0} thin />
-                                      null // Ak nechceš žiaden bar pre cold items
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
+                        
+                        <div className="flex justify-between items-center mt-2">
+                          <span className="text-[11px] font-black text-amber">
+                            {item.gold} <span className="text-[9px] opacity-50">CR</span>
+                          </span>
+                          <span className={cn("text-[10px] font-bold tracking-widest", item.isHot ? "text-orange animate-pulse" : "text-green opacity-70")}>
+                            {item.isHot ? fmtCooldown(item.cooldownRemaining) : 'COLD'}
+                          </span>
+                        </div>
+                        
+                        {/* Progress bar pre hot items */}
+                        {item.isHot && (
+                          <div className="w-full h-1 bg-surface-low mt-4">
+                            <div 
+                              className="h-full transition-all duration-1000" 
+                              style={{ 
+                                width: `${coolPct}%`, 
+                                background: 'linear-gradient(90deg, var(--amber) 0%, var(--red) 100%)',
+                                boxShadow: '0 0 5px var(--orange)'
+                              }} 
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
 
                {/* ── MISSION COMPLETE SPLASH SCREEN ── */}
               {state.missionSplash && createPortal(

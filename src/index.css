@@ -154,7 +154,9 @@ body {
 .border-green { border-bottom: 1px solid var(--green); }
 .border-orange { border: 1px solid var(--orange); }
 .border-muted-full { border: 1px solid var(--muted); }
-
+.border-green-full { border: 1px solid var(--green); }
+.border-red-full { border: 1px solid var(--red); }
+.border-gold-full { border: 1px solid var(--gold); }
 
 /* ============ SPACING ============ */
 .p-0 { padding: 0; }
@@ -267,6 +269,7 @@ body {
 .text-justify { text-align: justify; }
 
 /* Colors */
+.text-zero-message { color: #88ffaa !important;}
 .text-amber { color: var(--amber); }
 .text-amber-dark { color: var(--amber-dark); }
 .text-muted { color: var(--muted); }
