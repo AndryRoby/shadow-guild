@@ -1,0 +1,75 @@
+/* ═══════════════════════════════════════════════════════════════
+   NEW DESIGN SYSTEM ANIMATIONS
+   Used by src/design/primitives.jsx and migrated components.
+   ═══════════════════════════════════════════════════════════════ */
+
+html, body {
+  overflow-x: hidden;
+}
+
+#root {
+  overflow-x: hidden;
+}
+
+/* Floating number/text on successful action (replaces old floatUp) */
+@keyframes floatPop {
+    0%   { transform: translateY(0) scale(1); opacity: 1; }
+    100% { transform: translateY(-60px) scale(1.4); opacity: 0; }
+  }
+  
+  /* Snap-in transition for new elements */
+  @keyframes snapIn {
+    from { transform: translateY(-8px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+  
+  .snap-in {
+    animation: snapIn 260ms cubic-bezier(.2, .9, .25, 1) both;
+  }
+  
+  /* Blinking cursor / indicator */
+  @keyframes blinkFast {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0; }
+  }
+  
+  .blink {
+    animation: blinkFast 1.1s steps(2) infinite;
+  }
+  
+  /* Combo shatter effect when combo expires */
+  @keyframes shatter {
+    0%   { transform: scale(1);   opacity: 1; filter: blur(0); }
+    50%  { transform: scale(1.3); opacity: 0.6; filter: blur(2px); }
+    100% { transform: scale(1.6); opacity: 0; filter: blur(4px); }
+  }
+  
+  /* Gold border pulse for action grid at combo 10+ */
+  @keyframes borderPulseGold {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(255, 215, 0, 0); }
+    50%      { box-shadow: 0 0 20px 2px rgba(255, 215, 0, 0.4); }
+  }
+  
+  /* Amber border pulse for agent pending spec */
+  @keyframes borderPulseAmber {
+    0%, 100% { box-shadow: inset 0 0 0 1px rgba(255, 193, 116, 0.3); }
+    50%      { box-shadow: inset 0 0 0 1px rgba(255, 193, 116, 0.8), 0 0 12px rgba(255, 193, 116, 0.3); }
+  }
+  
+  /* Heat pulse (reuse existing) — rename if conflict */
+  @keyframes pulseHeatNew {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.5; }
+  }
+  
+  /* Gold pulse for prestige button */
+  @keyframes pulseGold {
+    0%, 100% { box-shadow: 0 0 0 rgba(255, 215, 0, 0),         inset 0 0 0 1px #ffd700; }
+    50%      { box-shadow: 0 0 40px rgba(255, 215, 0, 0.6),    inset 0 0 0 1px #ffd700; }
+  }
+  
+  /* Mission splash screen entrance */
+  @keyframes splashIn {
+    from { transform: translateY(20px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }

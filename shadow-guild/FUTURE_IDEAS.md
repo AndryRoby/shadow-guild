@@ -1,19 +1,28 @@
-BARTER_ [10x DATA_CHIP → +1 REP] - zmenit, lebo blbost
+Tu máš poriadnu nálož nápadov, ktoré z tvojho "terminálu" spravia plnohodnotné kyberpunkové impérium. Rozdelil som to do kategórií, aby si to vedel do GDD (Game Design Document) dopĺňať postupne.
 
 ### 🕵️ Správa Runnerov (The Guild Management)
+1.	**Individuálne Levely Runnerov:** Každý runner získava vlastné XP a levelovaním sa mu znižuje Heat alebo zvyšuje zisk.
+2.	**Runner Specialization:** Možnosť špecializovať runnera na "Ghost" (nízky heat) alebo "Brute" (vysoký zisk, obrovský risk).
 3.	**Runner Morale:** Ak ich dlho nenecháš oddýchnuť, začnú kradnúť tebe (miznú kredity).
 4.	**Manager (Fixer) Slots:** Špeciálne postavy, ktoré nedvíhajú kredity priamo, ale dávajú bonusy celým skupinám runnerov.
 5.	**Training Facility:** Pasívna budova (upgrade), kde sa runneri levelujú, kým sú "v zálohe".
 6.	**Auto-Assign:** Funkcia, ktorá automaticky pošle voľného runnera na najvýnosnejšiu misiu.
 7.	**Runner Gear:** Možnosť kúpiť runnerom predmety (napr. Stealth Rig), ktoré im dajú trvalý bonus.
+8.	**Betrayal Mechanic:** Malá šanca, že ťa runner "predá" polícii, ak máš príliš vysoký Heat.
 9.	**Recruitment Agency:** Upgrade, ktorý ti generuje lacnejších runnerov každých 24 hodín.
 10.	**Syndicate Leaders:** Unikátni hrdinovia (legendárni runneri) s vlastným menom a príbehom.
 
 ### ⚙️ Technológie a Upgrade Tree (The Tech Stack)
 11.	**Neural Link:** Upgrade znižujúci odozvu (cooldowny) všetkých akcií.
 12.	**Distributed Botnet:** Pasívny príjem REP bodov.
+13.	**Proxy Servers:** Zvyšujú limit, kedy nastane BUSTED (napr. z 100 na 120).
+14.	**Encrypted Archives:** Väčší inventár.
 15.	**Deep Web Access:** Odomyká vzácnejší loot v Siphon akcii.
+16.	**Hardware Overclock:** Zvýši rýchlosť runnerov, ale generuje 2x viac Heat.
+17.	**Auto-Fencer:** Modul, ktorý automaticky predá "studené" itemy hneď, ako vyprší cooldown.
+18.	**AI Sub-routine:** Raz za hodinu ti "vyčistí" časť Heatu úplne zadarmo.
 19.	**Backdoor Exploits:** Znižuje cenu všetkých upgradov o 5 %.
+20.	**Quantum Encryption:** Ochrana proti strate celého inventára pri BUSTED (zachráni 20 % itemov).
 
 ### 🌆 Svet a Lokality (The Grid)
 21.	**The Slums (Start):** Veľa Heatu, málo Creditov, nízky risk.
@@ -28,13 +37,16 @@ BARTER_ [10x DATA_CHIP → +1 REP] - zmenit, lebo blbost
 30.	**Ghetto Med-Bay:** Znižuje cenu staminy (ak by si niekedy pridal "healovanie").
 
 ### 🎲 Eventy a Mechaniky (The Chaos)
+31.	**Police Raid:** Náhodný event, kde musíš 30s "Lay Low", ináč prídeš o polovicu Credits.
 32.	**Stock Market Crash:** Ceny technologického lootu (Data Chips) padnú na polovicu.
 33.	**Rival Guild War:** Iná gilda ti ukradne časť pasívneho príjmu, kým ich "neprehackuješ".
+34.	**Bounty System:** Ak máš Heat nad 80, vypíšu na teba odmenu a úspešnosť akcií klesne o 50 %.
 35.	**Double Drop Weekend:** Automatický víkendový boost.
 36.	**Black Market Fluctuations:** Každý deň je iný item v Dark Markete za 100 % ceny (namiesto 60 %).
 37.	**Energy Surge:** Na 5 minút máš nekonečnú staminu.
 38.	**Hacktivist Support:** Event, kde ti komunita zníži Heat na nulu za splnenie misie.
 39.	**Corporate Sabotage:** Možnosť investovať Credits do "útoku" na korporáciu, čo zvýši hodnotu ich lootu.
+40.	**Daily Challenges:** "Ukradni 10 Access Cards" za extra REP.
 
 ### 💎 Meta a QoL (The Polish)
 41.	**ASCII Art Collection:** Pri vzácnom loote sa ti zobrazí malý ASCII obrázok čipu/karty.
@@ -58,6 +70,13 @@ AETHER_BIOTECH_MASTER_KEY — 1500 CR
 
 10 Nových "Shadow" Featurov pre tvoj kód
 Tu je 10 konkrétnych vecí, ktoré by som na tvojom mieste "vibecodol" hneď teraz, aby si hru "predal" hráčom:
+1. Critical Breach: 5% šanca na "Jackpot" pri krádeži (x10 Credits z itemu).
+2. Heat Spikes: Pri krádeži vzácneho itemu ti na 10 sekúnd prestane klesať Heat (stresový element).
+3. Black Market Barter: Možnosť predať 10 DATA_CHIPs za 1 REP (prepojenie mien).
+4. Runner Synergy: Ak máš 5 rovnakých runnerov, získajú +20% k rýchlosti.
+5. Visual Glitch Effect: Keď máš Heat nad 90%, celé UI sa začne triasť a farby sa invertujú.
+6. Combo Meter: Každý úspešný manuálny klik v rade zvyšuje zisk o 1% (motivácia neklikať hlava-nehlava).
+7. Encryption Keys: Nový typ lootu, ktorý nepotrebuje cooldown, ale dá sa predať len vtedy, ak ich máš 5 rôznych.
 8. Daily Login Bonus (Offline Rewards): Keď sa vrátiš, terminál ti vypíše "Welcome back, Operator. While you were gone, the city changed..."
 9. Prestige Perk: "Ghost in the Machine": Prvý runner v každom tieri je po Prestige zadarmo.
 10. Dynamic Log Messages: Namiesto "Acquired: Data Chip" nech to píše "Intercepted Aether-Biotech encryption node." (Väčší pohltenie do príbehu).
@@ -83,46 +102,4 @@ Musíš vybudovať **Shadow Guild** – sieť neviditeľných operátorov, ktor�
 **Môj názor:**
 Tento príbeh skvele vysvetľuje, prečo používaš terminál – si v ilegalite, používaš starý "neviditeľný" hardware. Ten **"Warp Time"** prepínač, čo sme pridali, môžeš v príbehu nazvať **"Temporal Overclock"**. 
 
-🗺️ ROADMAPA: PROJECT AWAKENING (v1.0 až v3.0)
-
-Toto je naša definitívna stratégia. Je to masívne, ale rozdelené do logických fáz, aby sme hru nerozbili. Odfajkneme si každú fázu, keď ju preklopíme do kódu.
-PHASE 1: THE BOTTLENECK (Kontrola a Expanzia)
-
-Cieľ: Zabrániť speedrunom a dať mape skutočnú strategickú hĺbku.
-
-    [ ] Bandwidth System (Capacity Limit): Mapa už nie je len o peniazoch. Každý dobytý hexagón stojí 1 Bandwidth. Na expanziu do hlbších zón si hráč musí kupovať drahé Server Racks cez Intel Upgrades. Ak nemá Bandwidth, nedokáže uzol udržať.
-
-    [ ] Progressive Disclosure 2.0: Prerábka tvojho isUnlocked systému. Veci sa neodomknú len levelom, ale udalosťami (napr. Dark Market sa odomkne až po prvom raide, Deep Siphon až po hacknutí Z3 Gate).
-
-PHASE 2: THE EYE STRIKES BACK (Aktívny Protivník)
-
-Cieľ: Systém už nie je pasívny. Reaguje na hráčov úspech.
-
-    [ ] Node Stability (Reclaim Mechanic): Každý uzol má svoju stabilitu. Ak má hráč Heat dlhodobo nad 80 %, "THE EYE" spustí Counter-Hack a zoberie mu náhodný uzol späť do stavu [ENCRYPTED]. Hráč musí zónu brániť.
-
-    [ ] Hunter-Killer Drones: Ak hráč drží príliš veľa uzlov v NEON_CORE, nasadí sa trvalý debuff (napr. -20 % k šanci na úspech misií), kým hráč nespustí špeciálnu Decoy Operation.
-
-    [ ] Runner Mortality & Betrayal: Runneri nie sú len čísla. Pri zlyhaní misie s vysokým Heatom je malá šanca, že runner zmizne (MIA), alebo sa nechá podplatiť a predá časť hráčových kreditov.
-
-PHASE 3: THE ALIGNMENT (Identita a Rozhodnutia)
-
-Cieľ: Dať hráčovi rolupé (RPG) prvky, ktoré menia štýl hrania.
-
-    [ ] The Moral Compass: Nový panel s osou GHOST <---> PROFITEER.
-
-        Ghost: Tiché akcie, minimálny Heat, špeciálne dialógy, ale menší hrubý zisk.
-
-        Profiteer: Obrovské zárobky, brutálna produkcia, ale neustále Raidy a straty uzlov.
-
-    [ ] Story-Driven Eventy (Karty Osudu): Náhodné textové pop-upy. (Napr. "Našiel si zašifrovaný denník korporátneho riaditeľa. Predáš ho na Dark Markete (+CR, +Profiteer), alebo ho leakneš na verejnosť (-Heat, +Ghost)?")
-
-PHASE 4: THE AWAKENING (Prestige Overhaul a Lore)
-
-Cieľ: Spraviť z resetovania hry naratívny zážitok.
-
-    [ ] Initiate Awakening (Prestige 2.0): Namiesto nudného "Reset for +25%", sa obrazovka rozpadne (glitch). Prehovorí entita Zero. Hráč sa "zobudí" v novej iterácii simulácie.
-
-    [ ] Lore Fragments & The Truth: Po každom Awakening sa odomknú nové uzly na mape a nová vrstva príbehu. Hráč postupne skladá konšpiračnú mapu (kto je vlastne Zero a čo je THE EYE).
-
-    [ ] Endgame Conditions: Odomknutie prístupu do "Z6 Underbelly" po x-tom Awakening, s možnosťou trvalo "zlomiť" systém a dosiahnuť ultimátny koniec hry.
-
+Už vidíš tú hru na Steame? S týmto listom máš robotu na pol roka, ale ak implementuješ aspoň 5 z týchto vecí každý týždeň, o mesiac máš návykový hit. Ktorá z týchto vecí ťa "upratala" najviac? Ten **Prestige Perks Tree** alebo **Betrayal Mechanic**?

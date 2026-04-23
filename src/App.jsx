@@ -1,11 +1,12 @@
-import { useReducer, useEffect, useState, useRef } from 'react';
+import { useReducer, useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { audioManager } from './audio/AudioManager.js';
 import { createPortal } from 'react-dom';
 import {
   Zap, Flame, Coins, TrendingUp, Package, Cpu,
-  Activity, ChevronUp, Users, ShieldOff, Star,
+  Activity, ChevronUp, Users, ShieldOff, Star, Eye, Shield, MessageSquare, User
 } from 'lucide-react';
 import {
-  siphon, breach, deepSiphon, mainframeHack, layLow, sellCooledItems, darkMarket, barter, manualCool, decrypt,
+  siphon, breach, deepSiphon, mainframeHack, layLow, sellCooledItems, sellSingleItem, darkMarket, barter, manualCool, decrypt,
   buyUpgrade, buyIntelUpgrade, hireRunner, setDistrict, warpTime, prestige, tick,
   xpRequired, heatStatus, effectiveSuccessRate, calculateOfflineProgress,
   UPGRADE_DEFS, INTEL_UPGRADE_DEFS, CHALLENGE_DEFS, ACHIEVEMENT_DEFS, PRESTIGE_PERK_DEFS,
@@ -18,6 +19,21 @@ import {
   DISTRICTS as AETHERIA_DISTRICTS,
   MAP_STATS,
 } from '../CITY_MAP.js';
+import { Panel, Row, Tag, DataBar, BBtn, MiniStat, fmt, COLORS } from './design/primitives.jsx';
+import { Sidebar } from './components/Sidebar.jsx';
+import { InventoryPanel } from './components/InventoryPanel.jsx';
+import { OpsTab } from './components/OpsTab.jsx';
+import { AgencyTab } from './components/AgencyTab.jsx';
+import { UpgradesTab } from './components/UpgradesTab.jsx';
+import { NetworkTab } from './components/NetworkTab.jsx';
+import { AwakeningTab } from './components/AwakeningTab.jsx';
+import { SettingsTab } from './components/SettingsTab.jsx';
+
+
+const getTimestamp = () => {
+	const now = new Date();
+	return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+};
 
 // maxInventory is always derived — never stored in state
 function calcMaxInventory(upgrades) {
@@ -34,16 +50,19 @@ const cn = (...classes) => classes.filter(Boolean).join(' ');
 // ── INITIAL STATE ─────────────────────────────────────────────────────────────
 
 const FRESH_STATE = {
+  saveVersion: 3,
   gold:               0,
   reputation:         0,
+  maxReputation:      0,
   heat:               0,
   stamina:            100,
-  level:              0,
+  level:              1,
   xp:                 0,
   prestige:           0,
   prestigeMultiplier: 1.0,
   totalGoldEarned:    0,
   runGoldEarned:      0,
+  totalActions: 0,
   inventory:          [],
   log:                [],
   lastTickTime:       Date.now(),
@@ -54,6 +73,9 @@ const FRESH_STATE = {
   bustedLockout:      0,
   feedback:           null,
   comboCount:         0,
+  comboTimer:         0,          // ← NOVÉ
+  comboShatterKey:    0,          // ← NOVÉ
+  lastLogTier:        'normal',   // ← NOVÉ
   zeroMessages:       [],
   upgrades: {
     ghostProtocol: 0, neuralBoost: 0, signalDampener: 0,
@@ -104,44 +126,101 @@ const FRESH_STATE = {
   overclockActive: false,
   overclockCooldown: 0,  // Sekundy, kým sa dá znova zapnúť
   agents: [],
+  everFailedThisRun: false,
+  prestigeReadyNotified: false,
+  squadUnlocked: false,      // Odomkne Squad System
+  awakaningTabUnlocked: false, // Odomkne Prestige Tab
+  shownTips: [],             // Zoznam zobrazených tipov (aby sa neopakovali)
+  agentBonds: [],            // Prebudované v Fáze 3
 };
 
 const DEV_START = {
   ...FRESH_STATE,
-  gold:               100000,        // veľa peňazí
-  reputation:         10000,         // vysoká reputácia
-  level:              10,            // vysoký level
-  runGoldEarned:      100000000,     // veľa zarobené (pre prestíž)
-  totalGoldEarned:    100000,};
+  gold:               500000,
+  reputation:         50000,
+  maxReputation:      50000,
+  level:              20,
+  xp:                 0,
+  prestige:           3,
+  prestigePoints:     10,
+  prestigeMultiplier: 2.0,
+  runGoldEarned:      100000000,
+  totalGoldEarned:    500000,
+};
 
 function loadInitialState() {
   try {
     const saved = localStorage.getItem(SAVE_KEY);
     if (saved) {
-      const parsed = JSON.parse(saved);
+      let parsed = JSON.parse(saved);
+
+      // Migračná logika: Ak save nemá verziu alebo je verzia 0, spravíme update na 1
+      if (!parsed.saveVersion || parsed.saveVersion < 1) {
+        parsed = { ...FRESH_STATE, ...parsed, saveVersion: 1 };
+      }
+      if (parsed.saveVersion < 2) {
+        parsed = {
+          ...parsed,
+          comboTimer: 0,
+          comboShatterKey: 0,
+          lastLogTier: 'normal',
+          saveVersion: 2,
+        };
+      }
+      if (parsed.saveVersion < 3) {
+        parsed = {
+            ...parsed,
+            totalActions: parsed.totalActions ?? 0,
+            saveVersion: 3,
+        };
+    }
+
+      // Vrátime zlúčený stav
       return {
-        ...FRESH_STATE,
-        ...parsed,
-        feedback:      null,
+        ...FRESH_STATE, // Základné defaulty
+        ...parsed,      // Hodnoty zo savu, ktoré prepíšu defaulty
+        
+        // Zabezpečenie, že aj pri starej štruktúre sa hĺbkové objekty správne spoja
+        feedback: null,
         runGoldEarned:  parsed.runGoldEarned ?? parsed.totalGoldEarned ?? 0,
-        zeroMessages:  parsed.zeroMessages ?? [],
-        runners:       { ...FRESH_STATE.runners,    ...parsed.runners },
-        runnerTick:    { ...FRESH_STATE.runnerTick, ...parsed.runnerTick },
-        upgrades:      { ...FRESH_STATE.upgrades,   ...parsed.upgrades },
-        intelUpgrades: { ...FRESH_STATE.intelUpgrades, ...parsed.intelUpgrades },
-        runnerXp:      { ...FRESH_STATE.runnerXp,   ...parsed.runnerXp },
-        runnerSpec:    { ...FRESH_STATE.runnerSpec,  ...parsed.runnerSpec },
+        zeroMessages:   parsed.zeroMessages ?? [],
+        maxReputation:  Math.max(parsed.maxReputation ?? 0, parsed.reputation ?? 0),
+        
+        runners:       { ...FRESH_STATE.runners,    ...(parsed.runners || {}) },
+        runnerTick:    { ...FRESH_STATE.runnerTick, ...(parsed.runnerTick || {}) },
+        upgrades:      { ...FRESH_STATE.upgrades,   ...(parsed.upgrades || {}) },
+        intelUpgrades: { ...FRESH_STATE.intelUpgrades, ...(parsed.intelUpgrades || {}) },
+        runnerXp:      { ...FRESH_STATE.runnerXp,   ...(parsed.runnerXp || {}) },
+        runnerSpec:    { ...FRESH_STATE.runnerSpec,  ...(parsed.runnerSpec || {}) },
+
+        shownTips: parsed.shownTips ?? [],
+        agentBonds: parsed.agentBonds ?? [],
+        
         systemScan:    parsed.systemScan ?? FRESH_STATE.systemScan,
         capturedHexes: parsed.capturedHexes ?? FRESH_STATE.capturedHexes,
         mapDiscovery:  parsed.mapDiscovery  ?? FRESH_STATE.mapDiscovery,
       };
     }
-  } catch { /* corrupt */ }
+  } catch (e) {
+    console.error("Save corrupted, loading default state:", e);
+  }
+  
+  // Návrat dev alebo fresh stavu ak save neexistuje alebo zlyhal
   return DEV_MODE ? DEV_START : FRESH_STATE;
 }
 
+// ── GLOBÁLNY HELPER PRE LIEČENIE ──
+const getHealCost = (agent) => {
+  if (!agent) return 0;
+  const base = agent.role === 'streetRunner' ? 150 :
+               agent.role === 'dataThief' ? 600 :
+               agent.role === 'infiltrator' ? 2000 : 6000;
+  return Math.max(50, Math.floor(base * ((agent.fatigue || 0) / 100)));
+};
+
 
 const INITIAL_STATE = loadInitialState();
+
 
 // ── REDUCER ───────────────────────────────────────────────────────────────────
 
@@ -152,6 +231,7 @@ function reducer(state, action) {
 		case 'DEEP_SIPHON':       return deepSiphon(state);
 		case 'LAY_LOW':           return layLow(state);
 		case 'SELL_COOLED_ITEMS': return sellCooledItems(state);
+    case 'SELL_ITEM':         return sellSingleItem(state, action.instanceId);
     case 'SHOW_PRESTIGE_MODAL':
       return { ...state, prestigeModalOpen: true };
       
@@ -190,32 +270,29 @@ function reducer(state, action) {
 		case 'COUNTER_HACK':      return counterHack(state);
 		
 		case 'SET_RUNNER_SPEC': {
-			const { runnerType, spec } = action;
-			let promotedCount = 0;
+      const { runnerType, spec } = action;
+      let promotedCount = 0;
 
-			// Povýšime všetkých agentov daného typu, ktorí majú status PENDING
-			const updatedAgents = (state.agents || []).map(a => {
-				if (a.role === runnerType && a.spec === 'PENDING') {
-					promotedCount++;
-					return { ...a, spec: spec, xp: 0, level: a.level + 1 };
-				}
-				return a;
-			});
+      const updatedAgents = (state.agents || []).map(a => {
+        if (a.role === runnerType && a.spec === 'PENDING') {
+          promotedCount++;
+          // Pridaná poistka (a.level || 1), aby sa to nezaseklo na NaN
+          return { ...a, spec: spec, xp: 0, level: (a.level || 1) + 1, status: 'ACTIVE' };
+        }
+        return a;
+      });
 
-			// Ak nikto nečakal na povýšenie, neurobíme nič
-			if (promotedCount === 0) return state;
+      if (promotedCount === 0) return state; // Ak nikoho nenašiel, vráti sa bez zmeny
 
-			const t = new Date().toLocaleTimeString('en-US', { hour12: false });
-			return {
-				...state,
-				agents: updatedAgents,
-				// Legacy properties update pre istotu
-				runnerXp: { ...(state.runnerXp || {}), [runnerType]: 0 }, 
-				runnerSpec: { ...(state.runnerSpec || {}), [runnerType]: spec },
-				reputation: (state.reputation || 0) + (50 * promotedCount),
-				log: [`[${t}] :: DOCTRINE_SET :: ${promotedCount}x ${runnerType.toUpperCase()} -> ${spec}`, ...(state.log || [])].slice(0, 50),
-			};
-		}
+      const t = getTimestamp();
+      return {
+        ...state,
+        agents: updatedAgents,
+        runnerXp: { ...(state.runnerXp || {}), [runnerType]: 0 }, 
+        runnerSpec: { ...(state.runnerSpec || {}), [runnerType]: spec },
+        log: [`[${t}] :: DOCTRINE_SET :: ${promotedCount}x ${runnerType.toUpperCase()} -> ${spec}`, ...(state.log || [])].slice(0, 50),
+      };
+    }
 
     case 'ASSIGN_TRAINING': {
       if (!state.agents) return state;
@@ -224,6 +301,7 @@ function reducer(state, action) {
         agents: state.agents.map(a => a.id === action.agentId ? { ...a, status: 'TRAINING' } : a)
       };
     }
+
     case 'STOP_TRAINING': {
       if (!state.agents) return state;
       return {
@@ -269,7 +347,7 @@ function reducer(state, action) {
       // 🔥 PEKNÝ NÁZOV UZLA A TIMESTAMP
       const nodeDef = AETHERIA_MAP[hexId];
       const nodeName = nodeDef ? nodeDef.label : hexId;
-      const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+      const t = getTimestamp();
     
       const newProgress = currentReclaim.progress - 40;
       const newReclaiming = { ...state.reclaiming };
@@ -292,14 +370,37 @@ function reducer(state, action) {
       if (!state.agents) return state;
       const agent = state.agents.find(a => a.id === action.agentId);
       if (!agent) return state;
-      const cost = Math.max(100, Math.floor(5000 * (agent.fatigue / 100)));
-      if (state.gold < cost) return state;
-      const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+      
+      const cost = getHealCost(agent); // Teraz to používa rovnaký vzorec ako UI!
+      
+      if (state.gold < cost) return state; // Poistka
+      
+      const t = getTimestamp();
       return {
         ...state,
         gold: state.gold - cost,
         agents: state.agents.map(a => a.id === action.agentId ? { ...a, fatigue: 0, status: 'ACTIVE' } : a),
         log: [`[${t}] :: MEDICAL :: ${agent.name} fully recovered. -${cost} CR`, ...(state.log || [])].slice(0, 50)
+      };
+    }
+
+    case 'HEAL_ALL_INJURED': {
+      if (!state.agents) return state;
+      const injured = state.agents.filter(a => a.fatigue > 0 && a.status !== 'ON_MISSION' && a.status !== 'CAPTURED');
+      if (injured.length === 0) return state;
+    
+      const totalCost = injured.reduce((sum, a) => sum + getHealCost(a), 0);
+      if (state.gold < totalCost) {
+        return { ...state, log: [`[!] :: INSUFFICIENT_FUNDS :: Need ${totalCost.toLocaleString()} CR for bulk heal`, ...(state.log || [])].slice(0, 50) };
+      }
+    
+      const healedIds = new Set(injured.map(a => a.id));
+      const t = getTimestamp();
+      return {
+        ...state,
+        gold: state.gold - totalCost,
+        agents: state.agents.map(a => healedIds.has(a.id) ? { ...a, fatigue: 0, status: 'ACTIVE' } : a),
+        log: [`[${t}] :: BULK_HEAL :: ${injured.length} operatives restored. -${totalCost.toLocaleString()} CR`, ...(state.log || [])].slice(0, 50)
       };
     }
 		
@@ -309,7 +410,7 @@ function reducer(state, action) {
 				...state,
 				gold: state.gold - 15000,
 				agents: state.agents.map(a => a.id === action.agentId ? { ...a, status: 'ACTIVE', fatigue: 50 } : a),
-				log: [`[${new Date().toLocaleTimeString('en-US', { hour12: false })}] :: NEGOTIATION :: Ransom paid. Operative returned from custody.`, ...(state.log || [])].slice(0, 50)
+				log: [`[${t}] :: NEGOTIATION :: Ransom paid. Operative returned from custody.`, ...(state.log || [])].slice(0, 50)
 			};
 		}
 
@@ -321,7 +422,7 @@ function reducer(state, action) {
       // 🔥 PEKNÝ NÁZOV UZLA
       const nodeDef = AETHERIA_MAP[hexId];
       const nodeName = nodeDef ? nodeDef.label : hexId;
-      const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+      const t = getTimestamp();
       
       // Ak je už na 95%+, netreba nič robiť
       if (currentStab >= 95) {
@@ -358,7 +459,7 @@ function reducer(state, action) {
     case 'TOGGLE_OVERCLOCK': {
       // Ak je cooldown, nedovoliť zapnúť
       if (!state.overclockActive && state.overclockCooldown > 0) {
-        const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+        const t = getTimestamp();
         return {
           ...state,
           log: [`[${t}] :: OVERCLOCK_UNAVAILABLE :: System cooling down (${Math.ceil(state.overclockCooldown / 60)}m ${state.overclockCooldown % 60}s remaining).`, ...(state.log || [])].slice(0, 50)
@@ -366,7 +467,7 @@ function reducer(state, action) {
       }
       
       const newState = !state.overclockActive;
-      const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+      const t = getTimestamp();
       
       // Ak vypínaš, nastav cooldown (300 sekúnd = 5 minút)
       const cooldown = newState ? 0 : 300;
@@ -391,7 +492,7 @@ function reducer(state, action) {
 
 			const nodeDef = AETHERIA_MAP[hexId];
 			const nodeName = nodeDef ? nodeDef.label : hexId;
-			const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+			const t = getTimestamp();
 
 			return {
 				...state,
@@ -498,7 +599,7 @@ function reducer(state, action) {
 			const repReward = Math.floor(25 * mult);
 			const xpReward = Math.floor(1500 * mult); 
 			
-			const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+			const t = getTimestamp();
 
 			return {
 				...state,
@@ -512,24 +613,21 @@ function reducer(state, action) {
 		}
 
     case 'USER_ACTIVE': {
-      // Ak sa prebúdza z Idle, zaznamenáme to
-      if (state.isIdle || state.idlePromptActive) {
-        const t = new Date().toLocaleTimeString('en-US', { hour12: false });
-        return {
-          ...state,
-          lastInteractionTime: Date.now(),
-          isIdle: false,
-          idlePromptActive: false,
-          log: state.isIdle 
-            ? [`[${t}] :: SYSTEM WAKING UP :: ACTIVE MODE ENGAGED`, ...(state.log || [])].slice(0, 50) 
-            : state.log
-        };
-      }
-      return { ...state, lastInteractionTime: Date.now() };
+      const t = getTimestamp();
+      return {
+        ...state,
+        lastInteractionTime: Date.now(), // Resetujeme čas poslednej aktivity
+        isIdle: false,
+        idlePromptActive: false,
+        idlePromptTimestamp: null,       // Toto je kľúčové!
+        log: state.isIdle 
+          ? [`[${t}] :: SYSTEM_RESUMED :: Neural link re-established. Output restored to 100%.`, ...(state.log || [])].slice(0, 50) 
+          : state.log
+      };
     }
 
 		case 'START_HACKING': {
-			const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+			const t = getTimestamp();
 			return {
 				...state,
 				heat: Math.min(100, state.heat + 20),
@@ -539,7 +637,7 @@ function reducer(state, action) {
 		
 		case 'APPLY_OFFLINE': {
 			const { earnedGold, heatAfter, elapsed } = action.payload;
-			const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+			const t = getTimestamp();
 			return {
 				...state,
 				gold:            state.gold + earnedGold,
@@ -553,7 +651,7 @@ function reducer(state, action) {
 		case 'MAINFRAME_HACK':    return mainframeHack(state);
 		case 'BUY_INTEL_UPGRADE': return buyIntelUpgrade(state, action.key);
 		case 'LOAD_SAVE': {
-			const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+			const t = getTimestamp();
 			return {
 				...FRESH_STATE, ...action.payload, feedback: null,
 				runGoldEarned:  action.payload.runGoldEarned ?? action.payload.totalGoldEarned ?? 0,
@@ -565,7 +663,7 @@ function reducer(state, action) {
 			};
 		}
 		case 'HARD_RESET': {
-			const t = new Date().toLocaleTimeString('en-US', { hour12: false });
+			const t = getTimestamp();
 			return { ...FRESH_STATE, log: [`[${t}] :: SYSTEM RESET`] };
 		}
 		case 'TICK': return tick(state);
@@ -619,7 +717,7 @@ function DataField({ label, value, unit, color = 'var(--amber)', size = 'lg' }) 
               {label}
           </span>
           <span className={cn(valSize, "font-bold")} style={{ color }}>
-              {value} {unit && <span className="text-[10px] opacity-50">{unit}</span>}
+              {value} {unit && <span className="text-[10px] opacity-80">{unit}</span>}
           </span>
       </div>
   );
@@ -734,7 +832,7 @@ function StatusCard({ status = 'default', children, className }) {
   );
 }
 
-function UpgradeRow({ def, level, gold, dispatch }) {
+function UpgradeRow({ def, level, gold, dispatchWithSound }) {
 	const maxed = level >= def.max;
 	const cost  = maxed ? 0 : getUpgradeCost(def.baseCost, level);
 	const canAfford = gold >= cost;
@@ -766,12 +864,12 @@ function UpgradeRow({ def, level, gold, dispatch }) {
 			{!maxed && (
 				<div className="flex items-center gap-12">
 					<span className={cn('font-black text-lg', canAfford ? 'text-amber' : 'text-red')}>
-						{cost.toLocaleString()} <span className="text-xs opacity-50">CR</span>
+						{cost.toLocaleString()} <span className="text-xs opacity-80">CR</span>
 					</span>
 					<BuyBtn
 						canAfford={canAfford}
 						maxed={false}
-						onClick={() => dispatch({ type: 'BUY_UPGRADE', key: def.key })}
+						onClick={() => dispatchWithSound({ type: 'BUY_UPGRADE', key: def.key })}
 					/>
 				</div>
 			)}
@@ -853,7 +951,7 @@ const AgentMiniRow = ({ agent }) => {
   );
 };
 
-function RunnerCard({ runnerType, label, count, gold, level, unlockLevel, requiresPrestige, prestige, baseCost, cycleSeconds, crPerRunner, heatPerRunner, agents = [], cycleTotal, dispatch, setSpecModal }) {
+function RunnerCard({ runnerType, label, count, gold, level, unlockLevel, requiresPrestige, prestige, baseCost, cycleSeconds, crPerRunner, heatPerRunner, agents = [], cycleTotal, dispatchWithSound, setSpecModal }) {
   const locked = level < unlockLevel || prestige < requiresPrestige;
   const lockReason = prestige < requiresPrestige ? `[PRESTIGE ${requiresPrestige}]` : `[LVL ${unlockLevel}]`;
   const maxed = count >= 5;
@@ -894,7 +992,7 @@ function RunnerCard({ runnerType, label, count, gold, level, unlockLevel, requir
       <div 
           className={cn(
               "flex flex-col mb-4 p-8 transition-all duration-500",
-              locked && "opacity-50 grayscale"
+              locked && "opacity-80 grayscale"
           )}
           style={{ 
               background: 'var(--surface-high)',
@@ -933,7 +1031,7 @@ function RunnerCard({ runnerType, label, count, gold, level, unlockLevel, requir
           <div className="bg-surface-low p-2 mb-6 border border-surface-high">
               <div className="text-md font-black text-amber flex-between">
                   <span className="opacity-80">SYS_YIELD:</span>
-                  <span>+{cycleTotal.toLocaleString()} <span className="text-xs opacity-50">CR</span></span>
+                  <span>+{cycleTotal.toLocaleString()} <span className="text-xs opacity-80">CR</span></span>
               </div>
           </div>
 
@@ -960,7 +1058,7 @@ function RunnerCard({ runnerType, label, count, gold, level, unlockLevel, requir
               {/* Cost Display (Left of Button) */}
               {!maxed && !locked && !hasPending && (
                   <span className={cn('font-black text-lg tabular-nums', canAfford ? 'text-amber' : 'text-red')}>
-                      {cost.toLocaleString()} <span className="text-xs opacity-50">CR</span>
+                      {cost.toLocaleString()} <span className="text-xs opacity-80">CR</span>
                   </span>
               )}
               
@@ -986,7 +1084,7 @@ function RunnerCard({ runnerType, label, count, gold, level, unlockLevel, requir
                           canAfford={canAfford} 
                           maxed={false} 
                           label="HIRE" 
-                          onClick={() => dispatch({ type: 'HIRE_RUNNER', runnerType })} 
+                          onClick={() => dispatchWithSound({ type: 'HIRE_RUNNER', runnerType })} 
                       />
                   )}
               </div>
@@ -996,7 +1094,7 @@ function RunnerCard({ runnerType, label, count, gold, level, unlockLevel, requir
 }
 
 // ── NETWORK INFILTRATION MANAGER ──
-function NetworkManager({ state, dispatch }) {
+function NetworkManager({ state, dispatchWithSound }) {
   const captured = state.capturedHexes ?? [];
   const missions = state.activeMissions ?? [];
   const MAP = AETHERIA_MAP; // Předpokladáme, že AETHERIA_MAP je importovaná
@@ -1051,7 +1149,7 @@ function NetworkManager({ state, dispatch }) {
 
           {/* ACTIVE MISSIONS PANEL */}
           <div className={cn('mb-16 border-l-4 p-8 bg-surface-low', isOverloaded ? 'border-red bg-red/5' : 'border-cyan bg-cyan/5')}>
-              <div className="flex-between font-bold text-[10px] tracking-widest border-b border-current pb-2 mb-8" style={{ color: isOverloaded ? 'var(--red)' : 'var(--cyan)', borderColor: isOverloaded ? 'var(--red)' : 'var(--cyan)' }}>
+              <div className="flex-between font-bold text-sm tracking-widest border-b border-current pb-2 mb-8" style={{ color: isOverloaded ? 'var(--red)' : 'var(--cyan)', borderColor: isOverloaded ? 'var(--red)' : 'var(--cyan)' }}>
                   <span>:: ACTIVE_INFILTRATIONS</span>
                   <span>[{missions.length} / {maxMissions}]</span>
               </div>
@@ -1091,12 +1189,12 @@ function NetworkManager({ state, dispatch }) {
                   <div key={dId} className="mb-24">
                       {/* DISTRICT HEADER (Color Coded) */}
                       <div 
-                          className="text-[11px] font-bold tracking-widest mb-10 border-b-4 pb-4 uppercase"
+                          className="text-sm font-bold tracking-widest mb-10 border-b-4 pb-4 uppercase"
                           style={{ color: district.color, borderColor: district.color }}
                       >
                           :: {district?.name || dId} 
                           <span className="ml-4 opacity-60 font-normal">{district?.desc}</span>
-                          <span className="float-right text-[10px] opacity-80">[{districtCaptured}/{districtTotal}]</span>
+                          <span className="float-right text-sm opacity-80">[{districtCaptured}/{districtTotal}]</span>
                       </div>
 
                       {/* NODE LIST */}
@@ -1129,7 +1227,7 @@ function NetworkManager({ state, dispatch }) {
                           return (
                               <div key={node.id} className={cn(
                                   "mb-4 p-8 transition-all border-l-4",
-                                  !isOwned && !activeMission && !canHack && 'opacity-50 grayscale'
+                                  !isOwned && !activeMission && !canHack && 'opacity-80 grayscale'
                               )} style={{ 
                                   background: nodeStyle.bg, 
                                   borderLeftColor: nodeStyle.border 
@@ -1137,7 +1235,7 @@ function NetworkManager({ state, dispatch }) {
                                   {/* NODE HEADER */}
                                   <div className="flex-between items-center mb-4">
                                       <span className={cn("font-bold text-md uppercase tracking-wider", `text-[${nodeStyle.text}]`)} style={{color: nodeStyle.text}}>
-                                          <span className="mr-6 opacity-50">{node.icon}</span> 
+                                          <span className="mr-6 opacity-80">{node.icon}</span> 
                                           {node.label}
                                       </span>
                                       <span className="text-[10px] font-mono uppercase tracking-widest opacity-60">
@@ -1165,8 +1263,8 @@ function NetworkManager({ state, dispatch }) {
 
                                           <div className="flex justify-end gap-8">
                                               {node.id !== 'western_warpgate' && (
-                                                  <button 
-                                                    onClick={() => dispatch({ type: 'MAINTAIN_NODE', hexId: node.id })}
+                                                  <button
+                                                    onClick={() => dispatchWithSound({ type: 'MAINTAIN_NODE', hexId: node.id })}
                                                     disabled={stability >= 95 || state.stamina < 15}
                                                     className={cn(
                                                       "btn-maintain",
@@ -1183,8 +1281,8 @@ function NetworkManager({ state, dispatch }) {
                                               )}
                                               
                                               {captured.length > 1 && node.id !== 'western_warpgate' && (
-                                                  <button 
-                                                      onClick={() => dispatch({ type: 'SEVER_CONNECTION', hexId: node.id })} 
+                                                  <button
+                                                      onClick={() => dispatchWithSound({ type: 'SEVER_CONNECTION', hexId: node.id })}
                                                       className="btn btn-xs btn-danger"
                                                       style={{ margin: 0, width: 'auto' }}
                                                   >
@@ -1206,11 +1304,14 @@ function NetworkManager({ state, dispatch }) {
                                           {/* Red bar for reclaim progress */}
                                           <Bar pct={reclaimData.progress} variant="ftg"/> 
                                           <button 
-                                              onClick={() => state.reputation >= 25 && dispatch({ type: 'SECURE_NODE', hexId: node.id })}
-                                              disabled={state.reputation < 25}
-                                              className="btn btn-xs btn-danger w-full mt-8 font-black"
+                                            onClick={() => state.reputation >= 25 && dispatchWithSound({ type: 'SECURE_NODE', hexId: node.id })}
+                                            disabled={state.reputation < 25}
+                                            className="btn btn-xs btn-danger w-full mt-8 font-black"
                                           >
-                                              EXECUTE COUNTER-MEASURE (25 REP)
+                                            {state.reputation >= 25 
+                                              ? 'EXECUTE COUNTER-MEASURE (25 REP)' 
+                                              : `INSUFFICIENT REP (${state.reputation}/25)`
+                                            }
                                           </button>
                                       </div>
                                   )}
@@ -1231,10 +1332,10 @@ function NetworkManager({ state, dispatch }) {
                                                   <button 
                                                       key={type}
                                                       disabled={disabled}
-                                                      onClick={() => dispatch({ type: 'DEPLOY_RUNNER', hexId: node.id, agentId: bestAgent.id })}
+                                                      onClick={() => dispatchWithSound({ type: 'DEPLOY_RUNNER', hexId: node.id, agentId: bestAgent.id })}
                                                       className={cn(
                                                           "btn p-6 flex flex-col items-start text-left",
-                                                          disabled ? 'btn-disabled opacity-50' : 'btn-amber'
+                                                          disabled ? 'btn-disabled opacity-80' : 'btn-amber'
                                                       )}
                                                       style={{ margin: 0 }}
                                                   >
@@ -1324,9 +1425,295 @@ function OfflinePopup({ report, onDismiss }) {
 // 3. MAIN APP STATE & EFFECTS
 // ==========================================
 
+// --- BOOT & INTRO SCREENS ---
+
+const BOOT_LINES = [
+  { text: 'LOADING_KERNEL...',                    zero: false },
+  { text: 'DECRYPTING_IDENTITY...',               zero: false },
+  { text: 'ESTABLISHING_SECURE_CHANNEL...',       zero: false },
+  { text: '[ZERO >>] Welcome, Operative. They are watching.', zero: true  },
+];
+
+function BootScreen({ onDone }) {
+  const [visibleCount, setVisibleCount] = useState(0);
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+
+  useEffect(() => {
+    if (visibleCount < BOOT_LINES.length) {
+      const t = setTimeout(() => {
+        audioManager.bootBeep();
+        setVisibleCount(v => v + 1);
+      }, 800);
+      return () => clearTimeout(t);
+    }
+    const t = setTimeout(() => onDoneRef.current(), 2000);
+    return () => clearTimeout(t);
+  }, [visibleCount]);
+
+  return (
+    <div className="boot-screen">
+      <div className="boot-screen-inner">
+        {BOOT_LINES.map((line, i) => (
+          <div key={i} className={cn('boot-line', line.zero && 'zero', i >= visibleCount && 'hidden')}>
+            {line.text}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const ZERO_INTRO_LINES = [
+  "Aether-Biotech owns this city.",
+  "Every camera. Every transaction. Every breath.",
+  "You're the only one who sees it.",
+];
+
+function ZeroIntroScreen({ onDone }) {
+  const [visibleCount, setVisibleCount] = useState(0);
+  const [showBegin,    setShowBegin]    = useState(false);
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+
+  useEffect(() => {
+    if (visibleCount < ZERO_INTRO_LINES.length) {
+      const t = setTimeout(() => {
+        audioManager.zeroLine();
+        setVisibleCount(v => v + 1);
+      }, 1500);
+      return () => clearTimeout(t);
+    }
+    const t = setTimeout(() => setShowBegin(true), 800);
+    return () => clearTimeout(t);
+  }, [visibleCount]);
+
+  return (
+    <div className="boot-screen">
+      <div className="boot-intro-wrap">
+        <div className="boot-screen-inner">
+          {ZERO_INTRO_LINES.map((line, i) => (
+            <div key={i} className={cn('boot-line zero', i >= visibleCount && 'hidden')}>
+              {line}
+            </div>
+          ))}
+        </div>
+        <div className="boot-begin-wrap">
+          <button
+            className={cn('boot-begin-btn', !showBegin && 'hidden')}
+            onClick={() => {
+              audioManager.beginClick();
+              setTimeout(() => onDoneRef.current(), 200);
+            }}
+          >
+            [ BEGIN ]
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ZERO TYPEWRITER LOG ENTRY ─────────────────────────────────────────────────
+function ZeroLogEntry({ text }) {
+  const [displayed, setDisplayed] = useState('');
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    setDisplayed('');
+    setDone(false);
+    let i = 0;
+    const id = setInterval(() => {
+      i++;
+      setDisplayed(text.slice(0, i));
+      if (i >= text.length) { clearInterval(id); setDone(true); }
+    }, 18);
+    return () => clearInterval(id);
+  }, [text]);
+  return (
+    <div className="log-entry text-zero-message">
+      {displayed}{!done && <span className="animate-pulse">_</span>}
+    </div>
+  );
+}
+
+// ── AGENT CARD ────────────────────────────────────────────────────────────────
+function AgentCard({ agent, dispatch, gold }) {
+  const isPending   = agent.spec === 'PENDING';
+  const isTraining  = agent.status === 'TRAINING';
+  const isActive    = agent.status === 'ACTIVE';
+  const isTired     = agent.fatigue > 0;
+  const healCost    = getHealCost(agent);
+  const xpNeeded    = (agent.level || 1) * 1000;
+  const xpPercent   = ((agent.xp || 0) / xpNeeded) * 100;
+
+  let statusColorClass = 'text-muted';
+  let statusColor = 'var(--muted)';
+  if (isActive) {
+    statusColorClass = 'text-green';
+    statusColor = 'var(--green)';
+  } else if (isTraining) {
+    statusColorClass = 'text-purple';
+    statusColor = 'var(--purple)';
+  } else if (agent.status === 'ON_MISSION') {
+    statusColorClass = 'text-cyan';
+    statusColor = 'var(--cyan)';
+  } else if (agent.status === 'EXHAUSTED' || agent.status === 'INJURED' || agent.status === 'CAPTURED') {
+    statusColorClass = 'text-red animate-pulse';
+    statusColor = 'var(--red)';
+  }
+
+  // V AgentCard:
+  const TraitIcon = {
+    GREEDY: Coins,
+    PARANOID: Eye,
+    LOYAL: Shield,
+    UNSTABLE: Zap,
+    CYNIC: MessageSquare,
+    IDEALIST: Star
+  }[agent.traits?.[0]] || User; // User je teraz definované
+
+  const dws = (action) => {
+    dispatch(action);
+    switch (action.type) {
+      case 'HEAL_AGENT':       audioManager.healAgent(); break;
+      case 'HEAL_ALL_INJURED':   audioManager.healAgent(); break;
+      case 'ASSIGN_TRAINING':  audioManager.assignTraining(); break;
+      case 'STOP_TRAINING':    audioManager.stopTraining(); break;
+      case 'SET_RUNNER_SPEC':  audioManager.setRunnerSpec(); break;
+      default: break;
+    }
+  };
+
+  return (
+    <div className="card agent-card p-8 flex flex-col justify-between" style={{ minHeight: '120px' }}>
+      
+      {/* HEADER: Avatar + Name */}
+      <div className="flex items-center gap-6 mb-4">
+        {/* AVATAR PLACEHOLDER */}
+        <div className="w-10 h-10 rounded-full border border-surface-low flex items-center justify-center bg-surface-low">
+          <Icon component={TraitIcon} size={18} color={statusColor} />
+        </div>
+        
+        <div className="flex-1 overflow-hidden">
+          <div className="text-sm font-bold truncate" style={{ color: statusColor }}>
+            {agent.name}
+          </div>
+          <div className="text-[10px] text-muted uppercase tracking-widest">
+            {agent.role} {agent.level > 1 && `· LVL ${agent.level}`}
+          </div>
+        </div>
+      </div>
+
+
+      {/* STATS ROW (Mini) */}
+      <div className="grid grid-cols-3 gap-2 text-center mb-4 text-[9px] text-muted">
+        <div>
+          STL<br/><span className="text-white">{agent.stats?.stealth || 40}</span>
+        </div>
+        <div>
+          SPD<br/><span className="text-white">{agent.stats?.speed || 40}</span>
+        </div>
+        <div>
+          INT<br/><span className="text-white">{agent.stats?.intel || 40}</span>
+        </div>
+      </div>
+
+      {/* BARS (Compact) */}
+      <div className="mb-2">
+        {/* FTG Bar - Thin */}
+        <div className="flex-between text-[9px] mb-1">
+          <span className="text-muted">FTG</span>
+          <span>{agent.fatigue}%</span>
+        </div>
+        <Bar pct={agent.fatigue} variant="ftg" thin />
+      </div>
+      
+      {/* XP Bar - Thin (pre aktívnych agentov, nie PENDING) */}
+      {!isPending && (
+        <div className="mb-4">
+          <div className="flex-between text-[9px] mb-1">
+            <span className="text-muted">XP</span>
+            <span className="text-muted">{agent.xp || 0} / {xpNeeded}</span>
+          </div>
+          <Bar pct={xpPercent} variant="xp" thin />
+        </div>
+      )}
+
+      {/* ACTIONS (Full width at bottom) */}
+      {!isPending ? (
+        <div className="flex gap-4 mt-2 pt-4" style={{ borderTop: '1px solid var(--surface-low)' }}>
+          {isTired && agent.status !== 'ON_MISSION' && agent.status !== 'CAPTURED' && (
+            <button
+              onClick={() => dws({ type: 'HEAL_AGENT', agentId: agent.id })}
+              disabled={gold < healCost}
+              className={cn("btn btn-xs flex-1 text-center", gold >= healCost ? "btn-danger" : "btn-disabled")}
+              style={{ margin: 0 }}
+            >
+              HEAL [{healCost}]
+            </button>
+          )}
+          {isActive && !isTired && (
+            <button
+              onClick={() => dws({ type: 'ASSIGN_TRAINING', agentId: agent.id })}
+              className="btn btn-xs btn-purple flex-1 text-center"
+              style={{ margin: 0 }}
+            >
+              TRAIN [15 CR/s]
+            </button>
+          )}
+          {isTraining && (
+            <button
+              onClick={() => dws({ type: 'STOP_TRAINING', agentId: agent.id })}
+              className="btn btn-xs flex-1 text-center border-red text-red"
+              style={{ margin: 0 }}
+            >
+              HALT
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="flex gap-4 mt-2 pt-4" style={{ borderTop: '1px solid var(--amber)' }}>
+          <button
+            onClick={() => dws({ type: 'SET_RUNNER_SPEC', runnerType: agent.role, spec: 'GREEDY' })}
+            className="btn btn-xs flex-1 text-center bg-amber text-bg"
+            style={{ margin: 0, border: 'none' }}
+          >
+            [GREEDY] +50% CR
+          </button>
+          <button
+            onClick={() => dws({ type: 'SET_RUNNER_SPEC', runnerType: agent.role, spec: 'SHADOW' })}
+            className="btn btn-xs flex-1 text-center bg-purple text-white"
+            style={{ margin: 0, border: 'none' }}
+          >
+            [SHADOW] -50% HEAT
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const srCycle = DEV_MODE ? 5  : 30;
+const dtCycle = DEV_MODE ? 10 : 120;
+const ifCycle = DEV_MODE ? 15 : 900;
+const fxCycle = DEV_MODE ? 20 : 3600;
+const sbCycle = DEV_MODE ? 30 : 7200;
+
 export default function App() {
-  const [state, dispatch]   = useReducer(reducer, INITIAL_STATE);
-  const [activeTab,         setActiveTab]      = useState('OPERATIONS');
+  const [state, dispatch] = useReducer(reducer, loadInitialState());
+  const [appPhase, setAppPhase] = useState(() => {
+    const booted = localStorage.getItem('sg_booted');
+    const intro  = localStorage.getItem('sg_intro');
+    const done   = localStorage.getItem('sg_first_done');
+    if (!booted) return 'BOOT';
+    if (!intro || !done) return 'INTRO';
+    return 'GAME';
+  });
+  const [activeTab, setActiveTab] = useState(() => {
+    const resetTab = localStorage.getItem('sg_reset_tab');
+    if (resetTab) { localStorage.removeItem('sg_reset_tab'); return resetTab; }
+    return 'OPERATIONS';
+  });
   const [importInput,       setImportInput]    = useState('');
   const [importError,       setImportError]    = useState('');
   const [resetConfirm,      setResetConfirm]   = useState(false);
@@ -1338,6 +1725,36 @@ export default function App() {
   const lastFeedbackTs = useRef(null);
   const prevGold       = useRef(0);
   const prevRep        = useRef(0);
+
+  const [audioVolume,  setAudioVolume]  = useState(0.4);
+  // ── UNLOCK REVEAL LOGIC ─────────────────────────────────────────────────────
+  const prevUnlocked = useRef(new Set());
+
+  // Táto funkcia len kontroluje, NEUKLADÁ stav.
+  const isNewlyUnlocked = (feature) => {
+    const nowUnlocked = isUnlocked(state, feature);
+    const wasUnlocked = prevUnlocked.current.has(feature);
+    return nowUnlocked && !wasUnlocked;
+  };
+
+  // Tento effect aktualizuje "pamäť" po každom renderi.
+  // Bezo neby by isNewlyUnlocked vracalo true donekonečna.
+  useEffect(() => {
+    const currentUnlocked = new Set();
+    // Musíme skontrolovať všetky možné features, ktoré ťa zaujímajú
+    const allFeatures = [
+      'breach', 'xp', 'upgrades_tab', 'runners', 'agency', 
+      'rep', 'barter', 'intel', 'protocol', 'dark_market', 
+      'district', 'daily', 'deep_siphon', 'manual_cool', 
+      'ai_subroutine', 'mainframe', 'stamina', 'heat' // pridané pre dashboard
+    ];
+    
+    allFeatures.forEach(f => {
+      if (isUnlocked(state, f)) currentUnlocked.add(f);
+    });
+    
+    prevUnlocked.current = currentUnlocked;
+  }); // Spustí sa po každom renderi
 
   // ── visual effect state ────────────────────────────────────────────────────
   const [overlays,      setOverlays]      = useState([]);
@@ -1352,8 +1769,11 @@ export default function App() {
   const [logGlitch,    setLogGlitch]    = useState(false);
   const [specModal,    setSpecModal]    = useState(null);   
   const [scanBtnPos,   setScanBtnPos]   = useState({ x: 35, y: 40 });
-  const prevLogLen      = useRef(0);
-  const prevZeroCount   = useRef(0);
+  const prevLogLen        = useRef(0);
+  const prevZeroCount     = useRef(0);
+  const logContentRef     = useRef(null);
+  const comboMaxTriggered = useRef(false);
+  const notifiedUnlocks   = useRef(new Set());
 
   // ── KONTROLA PRE LAST STAND EVENT ──
 	const lastStandEntry = Object.entries(state.reclaiming || {}).find(([id, r]) => r.stage === 'LAST_STAND');
@@ -1365,69 +1785,191 @@ export default function App() {
 
   const mods = calculateMapModifiers(state);
 
+  // ── DERIVED CALCULATIONS (Pre "Flow Rates" panel) ───────────────────────────────
+  const derived = useMemo(() => {
+    // 1. Výpočet pasívneho príjmu (CR/sec) z aktívnych agentov
+    let cps = 0;
+    const activeAgents = (state.agents || []).filter(a => a.status === 'ACTIVE');
+    
+    const baseIncomes = { 
+      streetRunner: 2, 
+      dataThief: 8, 
+      infiltrator: 35, 
+      fixer: 150, 
+      shadowBroker: 600 
+    };
+    
+    const cycles = { 
+      streetRunner: srCycle, 
+      dataThief: dtCycle, 
+      infiltrator: ifCycle, 
+      fixer: fxCycle, 
+      shadowBroker: sbCycle 
+    };
+
+    const idleMult = state.isIdle ? 0.6 : 1.0;
+    const guildMult = state.prestigePerks?.GUILD_MASTER ? 1.25 : 1;
+
+    activeAgents.forEach(a => {
+      const base = baseIncomes[a.role] || 0;
+      const cycle = cycles[a.role] || 60;
+      const specMult = a.spec === 'GREEDY' ? 1.5 : 1;
+      // Základný vzorec: (Base * Spec * Guild * Idle) / Cycle
+      cps += (base * specMult * guildMult * idleMult) / cycle;
+    });
+
+    // 2. Výpočet Heat/min
+    // Base decay: cca -0.2 heat za sekundu -> -12 za minútu
+    // Overclock: +0.8 heat za sekundu -> +48 za minútu
+    let heatPerMin = -12;
+    if (state.overclockActive) {
+      heatPerMin += 48;
+    }
+
+    // 3. Stamina regen (jednoduchý odhad)
+    let staRegen = 0.2; 
+
+    return { cps, heatPerMin, staRegen };
+  }, [
+    state.agents, 
+    state.isIdle, 
+    state.overclockActive, 
+    state.prestigePerks, 
+    srCycle, dtCycle, ifCycle, fxCycle, sbCycle
+  ]);
+
   // ── offline progress on mount ──────────────────────────────────────────────
+  // ZVUK: Zazní až po kliknutí na tlačidlo "ACKNOWLEDGE" (nižšie v kóde)
   useEffect(() => {
     const report = calculateOfflineProgress(INITIAL_STATE, Date.now());
     if (report) {
       dispatch({ type: 'APPLY_OFFLINE', payload: report });
       setOfflineReport(report);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    const loadedState = INITIAL_STATE; 
     const lastLogin = localStorage.getItem('shadow_guild_last_login');
     const today = new Date().toDateString();
   
     if (lastLogin !== today) {
-      const bonus = 1000 * (loadedState.level || 1) * ((loadedState.prestige || 0) + 1);
+      const bonus = 1000 * (state.level || 1) * ((state.prestige || 0) + 1);
       
       dispatch({ type: 'DAILY_BONUS', amount: bonus });
       
-      const t = new Date().toLocaleTimeString('en-US', { hour12: false });
-      dispatch({ type: 'ADD_LOG', text: `[${t}] :: DAILY_CONNECTION_BONUS: +${bonus.toLocaleString()} CR` });
+      // ZVUK: Tu nie, pretože autplay policy. 
+      // Ak chceš zvuk, musí byť viazaný na notifikáciu, ktorú user odklikne.
       
       localStorage.setItem('shadow_guild_last_login', today);
     }
+  }, [state.level, state.prestige]); // Pridali sme závislosti
+
+  // ── dispatch with sound ───────────────────────────────────────────────────
+  const dispatchWithSound = useCallback((action) => {
+    dispatch(action);
+    switch (action.type) {
+      case 'SELL_COOLED_ITEMS':  audioManager.sell(); break;
+      case 'SELL_ITEM':          audioManager.sell(); break;
+      case 'BUY_UPGRADE':
+      case 'BUY_INTEL_UPGRADE':
+      case 'BUY_PRESTIGE_PERK':
+      case 'HIRE_RUNNER':        audioManager.upgrade(); break;
+      case 'LAY_LOW':            audioManager.layLow(); break;
+      case 'MANUAL_COOL':        audioManager.manualCool(); break;
+      case 'DARK_MARKET':        audioManager.darkMarket(); break;
+      case 'BARTER':             audioManager.barter(); break;
+      case 'DECRYPT':            audioManager.decrypt(); break;
+      case 'PRESTIGE':           audioManager.prestige(); break;
+      case 'DEPLOY_RUNNER':      audioManager.deployRunner(); break;
+      case 'MAINTAIN_NODE':      audioManager.maintainNode(); break;
+      case 'SEVER_CONNECTION':   audioManager.severConnection(); break;
+      case 'TOGGLE_OVERCLOCK':   audioManager.overclock(); break;
+      case 'SET_DISTRICT':
+      case 'SET_PROTOCOL':       audioManager.tab(); break;
+      case 'SECURE_NODE':        audioManager.secureNode(); break;
+      case 'PURGE_LOGS':         audioManager.purgeLogs(); break;
+      case 'COUNTER_HACK':       audioManager.counterHack(); break;
+      case 'HEAL_AGENT':         audioManager.healAgent(); break;
+      case 'ASSIGN_TRAINING':    audioManager.assignTraining(); break;
+      case 'STOP_TRAINING':      audioManager.stopTraining(); break;
+      case 'SET_RUNNER_SPEC':    audioManager.setRunnerSpec(); break;
+      case 'EXECUTE_LAST_STAND': audioManager.executeLastStand(); break;
+      default: break;
+    }
   }, []);
 
-  // ── single game tick ───────────────────────────────────────────────────────
+  // 1. Zostáva pôvodná utilita, ale je obalená v useCallback
+  const saveGame = useCallback((stateToSave) => {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(stateToSave));
+      console.log(":: AUTO-SAVE SAVED ::", new Date().toLocaleTimeString());
+    } catch (e) {
+      console.error('Save failed:', e);
+    }
+  }, []);
+
+  // 2. Refencia na aktuálny stav (kľúč k tomu, aby auto-save fungoval)
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  // 3. Game Tick (Bez zvuku, aby neotravoval)
   useEffect(() => {
     const id = setInterval(() => dispatch({ type: 'TICK' }), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, []); // Prázdne pole = neresetuje sa
 
-  // ── auto-save every 30s ────────────────────────────────────────────────────
+  // 4. Auto-save interval (stabilný, 30s)
   useEffect(() => {
     const id = setInterval(() => {
-      try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch { /* quota */ }
+      // Vždy vezme najnovší state z referencie
+      saveGame(stateRef.current);
     }, 30000);
     return () => clearInterval(id);
-  }, [state]);
+}, [saveGame]); // Závislosť je len na saveGame, ktorá sa nemení
 
-  // ── ACTIVITY TRACKER (AFK DETECTION) ──
+  // ── save on critical state changes ────────────────────────────────────────
   useEffect(() => {
-    let lastCall = 0;
-    const handleActivity = () => {
-      const now = Date.now();
-      // Pošle signál o aktivite maximálne raz za 5 sekúnd
-      if (now - lastCall > 5000) {
-        lastCall = now;
-        dispatch({ type: 'USER_ACTIVE' });
+    saveGame(state);
+  }, [
+    state.prestige,
+    state.bustedLockout,
+    state.raidActive,
+    state.capturedHexes,
+    state.prestigePerks,
+    state.upgrades,
+    state.intelUpgrades,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── ACTIVITY TRACKER ──
+  useEffect(() => {
+    const handleActivity = (e) => {
+      if (state.isIdle && e.type !== 'click') return;
+
+      if (!audioManager.ctx) {
+        audioManager.init();
+        audioManager.loadVolume();
+        audioManager.startAmbient();
+        setAudioVolume(audioManager.masterVolume);
       }
+
+      // ZVUK: Prebudenie z AFK
+      if (state.isIdle) {
+         audioManager.systemWakeup();
+      }
+
+      dispatch({ type: 'USER_ACTIVE' });
     };
 
-    window.addEventListener('mousemove', handleActivity);
     window.addEventListener('keydown', handleActivity);
     window.addEventListener('click', handleActivity);
     
     return () => {
-      window.removeEventListener('mousemove', handleActivity);
       window.removeEventListener('keydown', handleActivity);
       window.removeEventListener('click', handleActivity);
     };
-  }, [dispatch]);
+  }, [state.isIdle, dispatch]);
 
 
   // Nájdi uzly s kritickou stabilitou (pod 30%)
@@ -1435,7 +1977,7 @@ export default function App() {
   .filter(([hexId, stability]) => stability < 30 && hexId !== 'western_warpgate')
   .length;
 
-  // ── feedback → visual effects ──────────────────────────────────────────────
+  // ── feedback → visual effects + audio ─────────────────────────────────────
   useEffect(() => {
     if (!state.feedback) return;
     if (state.feedback.ts === lastFeedbackTs.current) return;
@@ -1447,7 +1989,12 @@ export default function App() {
     if (type === 'BUSTED') {
       setBustedFlash(true);
       setTimeout(() => setBustedFlash(false), 3000);
+      audioManager.bustedSound();
     }
+    // audio
+    if (type === 'SUCCESS') audioManager.siphonSuccess();
+    else if (type === 'FAIL') audioManager.siphonFail();
+    else if (type !== 'BUSTED' && state.log[0]?.startsWith('[!]')) audioManager.error();
   }, [state.feedback]);
 
   // ── daily challenge complete overlay ──────────────────────────────────────
@@ -1461,7 +2008,7 @@ export default function App() {
     setTimeout(() => setOverlays(prev => prev.filter(o => o.id !== id)), 2500);
   }, [state.dailyFeedback]);
 
-  // ── achievement overlay ────────────────────────────────────────────────────
+  // ── achievement overlay + audio ────────────────────────────────────────────
   const lastAchievementTs = useRef(null);
   useEffect(() => {
     if (!state.achievementFeedback) return;
@@ -1470,6 +2017,7 @@ export default function App() {
     const { id, ts } = state.achievementFeedback;
     setOverlays(prev => [...prev, { id: ts, type: 'ACHIEVEMENT', achievementId: id }]);
     setTimeout(() => setOverlays(prev => prev.filter(o => o.id !== ts)), 3500);
+    audioManager.achievement();
   }, [state.achievementFeedback]);
 
   // ── gold pulse ─────────────────────────────────────────────────────────────
@@ -1497,22 +2045,67 @@ export default function App() {
     prevLogLen.current = state.log.length;
   }, [state.log.length]);
 
-  // ── glitch log container when a ZERO message arrives ──────────────────────
+  // ── auto-scroll log to top (newest entry) on log change ──────────────────
   useEffect(() => {
-    // Bezpečne získa reťazec z logu (či už je to string alebo objekt s textom)
+    logContentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [state.log]);
+
+  // ── glitch log + audio when a ZERO message arrives ───────────────────────
+  useEffect(() => {
     const getLogString = (entry) => {
       if (typeof entry === 'string') return entry;
       if (entry && typeof entry === 'object' && entry.text) return entry.text;
       return '';
     };
-    
     const zeroCount = state.log.filter(e => getLogString(e).includes('[ZERO >>]')).length;
     if (zeroCount > prevZeroCount.current) {
       setLogGlitch(true);
       setTimeout(() => setLogGlitch(false), 600);
+      audioManager.zeroMessage();
     }
     prevZeroCount.current = zeroCount;
-  }, [state.log.length]); // eslint-disable-line react-hooks/exhaustive-deps // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state.log.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── combo max: trigger Zero message once per streak ────────────────────────
+  useEffect(() => {
+    const cc = state.comboCount ?? 0;
+    if (cc >= 20 && !comboMaxTriggered.current) {
+      comboMaxTriggered.current = true;
+      audioManager.achievement();
+    }
+    if (cc < 20) comboMaxTriggered.current = false;
+  }, [state.comboCount]);
+
+  // ── audio: mission splash — node captured ──────────────────────────────────
+  const prevMissionSplash = useRef(null);
+  useEffect(() => {
+    if (state.missionSplash && !prevMissionSplash.current) audioManager.nodeCapture();
+    prevMissionSplash.current = state.missionSplash;
+  }, [state.missionSplash]);
+
+  // ── audio + log on feature unlocks ──────────────────────────────────────────
+  useEffect(() => {
+    const features = ['agency', 'upgrades_tab', 'district', 'breach', 'deep_siphon', 'mainframe'];
+    features.forEach(f => {
+      if (isUnlocked(state, f) && !notifiedUnlocks.current.has(f)) {
+        notifiedUnlocks.current.add(f);
+        audioManager.upgrade();
+        dispatch({ type: 'ADD_LOG', text: `:: SYSTEM_UNLOCK :: [${f.toUpperCase()}] — access granted.` });
+      }
+    });
+  }, [state.level, state.maxReputation]);
+
+  // ── audio: raid starts — play once ────────────────────────────────────────
+  const prevRaidActive = useRef(false);
+  useEffect(() => {
+    if (state.raidActive && !prevRaidActive.current) audioManager.raidWarning();
+    prevRaidActive.current = state.raidActive;
+  }, [state.raidActive]);
+
+  // ── audio: ambient heat intensity ─────────────────────────────────────────
+  useEffect(() => {
+    audioManager.setAmbientIntensity(state.heat);
+  }, [state.heat]);
 
   // ── runner spec modal: open when any runner hits PENDING ──────────────────
   useEffect(() => {
@@ -1587,11 +2180,7 @@ export default function App() {
   const siphonCost      = prestigePerks.GHOST_STEP ? 8 : 10;
   const eyeReveal       = !!prestigePerks.EYE_REVEAL;
 
-  const srCycle = DEV_MODE ? 5  : 30;
-  const dtCycle = DEV_MODE ? 10 : 120;
-  const ifCycle = DEV_MODE ? 15 : 900;
-  const fxCycle = DEV_MODE ? 20 : 3600;
-  const sbCycle = DEV_MODE ? 30 : 7200;
+  
 
   const hasNetScanner = (state.intelUpgrades?.netScanner ?? 0) >= 1;
   const heat = Math.round(state.heat);
@@ -1614,6 +2203,13 @@ export default function App() {
   const comboCount  = state.comboCount ?? 0;
   const comboPct    = Math.min(comboCount * 0.01, 0.20);
   const comboHigh   = comboCount >= 10;
+  const comboGlowClass =
+    comboCount >= 20 ? 'combo-glow-max' :
+    comboCount >= 15 ? 'combo-glow-high' :
+    comboCount >= 5  ? 'combo-glow-low'  : '';
+  const comboTextClass =
+    comboCount >= 15 ? 'text-gold' :
+    comboHigh        ? 'text-amber' : 'text-muted';
 
   const heatGlitchClass = heatRound >= 95 ? 'heat-extreme' : heatRound >= 80 ? 'heat-critical' : '';
   const heatDangerClass = heatRound >= 90 ? 'heat-danger' : '';
@@ -1637,11 +2233,15 @@ export default function App() {
   const aiCycleSecs    = DEV_MODE ? 30 : 3600;
   const aiRemaining    = aiCycleSecs - (state.aiSubroutineTick ?? 0);
 
-  const hotItems       = state.inventory.filter(i => i.isHot);
-  const coolTarget     = hotItems.length > 0
-    ? hotItems.reduce((a, b) => a.cooldownRemaining > b.cooldownRemaining ? a : b)
+  const hotItems = state.inventory.filter(i => i.isHot);
+  // Najprv najcennejšie (b.gold - a.gold), ak majú rovnakú cenu, tak tie s najkratším časom
+  const coolTarget = hotItems.length > 0
+    ? [...hotItems].sort((a, b) => (b.gold - a.gold) || (a.cooldownRemaining - b.cooldownRemaining))[0]
     : null;
 
+  // Trainees count (pre AFK overlay a Neural Sim)
+  const traineesCount = (state.agents || []).filter(a => a.status === 'TRAINING').length || 0;
+  
   const SORT_MODES = ['VALUE', 'TIME', 'COLD'];
   const sortedInventory = [...state.inventory].sort((a, b) => {
     if (inventorySort === 'VALUE')    return b.gold - a.gold;
@@ -1653,30 +2253,43 @@ export default function App() {
     return a.cooldownRemaining - b.cooldownRemaining;
   });
 
-  // ── POMOCNÍK PRE VÝPOČET PRESNÉHO ZISKU RUNNEROV ──
-	const calculateCycleTotal = (runnerKey) => {
-		const activeAgents = (state.agents || []).filter(a => a.role === runnerKey && a.status === 'ACTIVE');
-		if (activeAgents.length === 0) return 0;
+  // Výpočet reálneho zárobku za jeden cyklus (nie za sekundu)
+  const calculateCycleTotal = (runnerKey) => {
+    const activeAgents = (state.agents || []).filter(a => a.role === runnerKey && a.status === 'ACTIVE');
+    if (activeAgents.length === 0) return 0;
 
-		const baseIncome = {
-			streetRunner: 2,
-			dataThief: 8,
-			infiltrator: 35,
-			fixer: 150,
-			shadowBroker: 600
-		}[runnerKey];
+    // Base income za JEDEN CYKLUS (napr. 30s pre Street Runnera)
+    const baseIncome = {
+      streetRunner: 30,     // Base 30 CR za 30s = 1 CR/s
+      dataThief: 120,       // Base 120 CR za 120s
+      infiltrator: 900,     // atď.
+      fixer: 3600,
+      shadowBroker: 7200
+    }[runnerKey] || 10;
 
-		const synergyMult = activeAgents.length >= 5 ? 1.2 : 1;
-		const guildMult = state.prestigePerks?.GUILD_MASTER ? 1.25 : 1;
-		const idleMult = state.isIdle ? 0.6 : 1.0;
+    let total = 0;
+    
+    // Modifikátory zo štátu (pasívne)
+    const guildMult = state.prestigePerks?.GUILD_MASTER ? 1.25 : 1;
+    const idleMult = state.isIdle ? 0.6 : 1.0;
 
-		let total = 0;
-		activeAgents.forEach(a => {
-			const specMult = a.spec === 'GREEDY' ? 1.5 : 1;
-			total += baseIncome * specMult * synergyMult * guildMult * idleMult;
-		});
-		return Math.floor(total);
-	};
+    activeAgents.forEach(a => {
+      // 1. Level bonus: +15% k base za každý level nad 1
+      const levelMult = 1 + ((a.level || 1) - 1) * 0.15;
+      
+      // 2. Špecifikácia
+      const specMult = a.spec === 'GREEDY' ? 1.5 : 1; // Greedy dáva +50%
+
+      // 3. Výpočet
+      // Base Income * LevelMult * SpecMult * GuildMult * IdleMult
+      total += baseIncome * levelMult * specMult * guildMult * idleMult;
+    });
+
+    // Synergy bonus (5 agentov = +20%)
+    if (activeAgents.length >= 5) total *= 1.2;
+
+    return Math.floor(total);
+  };
 
   // ── THEME LOGIC ──
   const themeColor = AETHERIA_DISTRICTS[state.district]?.color ?? '#ffc174';
@@ -1696,10 +2309,21 @@ export default function App() {
   // 5. MAIN RETURN (Layout Grid)
   // ==========================================
 
+  if (appPhase === 'BOOT') return <BootScreen onDone={() => {
+    localStorage.setItem('sg_booted', '1');
+    setAppPhase('INTRO');
+  }} />;
+
+  if (appPhase === 'INTRO') return <ZeroIntroScreen onDone={() => {
+    localStorage.setItem('sg_intro', '1');
+    localStorage.setItem('sg_first_done', '1');
+    setAppPhase('GAME');
+  }} />;
+
   return (
-    <div 
+    <div
       className={`game-root ${heatGlitchClass} ${heatDangerClass}`.trim()}
-      style={{ filter: heatFilter, ...dynamicThemeStyle }}
+      style={{ filter: heatFilter, overflowX: 'hidden', ...dynamicThemeStyle }}
     >
     
     {/* ── SCANLINE OVERLAY (Refaktorované na CSS class) ── */}
@@ -1771,15 +2395,15 @@ export default function App() {
                   }}
               >
                   <button
-                      onClick={() => dispatch({ type: 'PURGE_LOGS' })}
+                      onClick={() => dispatchWithSound({ type: 'PURGE_LOGS' })}
                       className="btn btn-danger animate-raid text-center"
                       style={{ width: '100%' }}
                   >
                       [ PURGE_LOCAL_LOGS ]
                   </button>
-                  
+
                   <button
-                      onClick={() => dispatch({ type: 'COUNTER_HACK' })}
+                      onClick={() => dispatchWithSound({ type: 'COUNTER_HACK' })}
                       className="btn btn-purple text-center"
                       style={{ width: '100%' }}
                   >
@@ -1816,9 +2440,12 @@ export default function App() {
                   </div>
                   
                   <button 
-                      onClick={() => dispatch({ type: 'CLEAR_OFFLINE_REPORT' })} 
+                      onClick={() => {
+                          audioManager.dataLoad(); // ZVUK: Načítanie dát
+                          dispatch({ type: 'CLEAR_OFFLINE_REPORT' });
+                      }} 
                       className="btn btn-amber"
-                      style={{ border: 'none' }} // btn má border, tu chceme plný button
+                      style={{ border: 'none' }}
                   >
                       [ ACKNOWLEDGE ]
                   </button>
@@ -1841,8 +2468,8 @@ export default function App() {
                   
                   <button
                       onClick={() => {
-                          dispatch({ type: 'SET_RUNNER_SPEC', runnerType: specModal, spec: 'SHADOW' });
-                          setSpecModal(null); 
+                          dispatchWithSound({ type: 'SET_RUNNER_SPEC', runnerType: specModal, spec: 'SHADOW' });
+                          setSpecModal(null);
                       }}
                       className="btn btn-purple mb-4"
                   >
@@ -1852,8 +2479,8 @@ export default function App() {
                   
                   <button
                       onClick={() => {
-                          dispatch({ type: 'SET_RUNNER_SPEC', runnerType: specModal, spec: 'GREEDY' });
-                          setSpecModal(null); 
+                          dispatchWithSound({ type: 'SET_RUNNER_SPEC', runnerType: specModal, spec: 'GREEDY' });
+                          setSpecModal(null);
                       }}
                       className="btn btn-success mb-10"
                   >
@@ -1892,16 +2519,8 @@ export default function App() {
                   return (
                       <div
                           key={o.id}
-                          className={cn("overlay-float", sizeClass, colorClass, "font-bold tracking-wider")}
+                          className={cn("overlay-float", o.critical && "overlay-float-crit", sizeClass, colorClass, "font-bold tracking-wider")}
                           style={{
-                              top: o.critical ? '30%' : '36%',
-                              left: '74%',
-                              animationDuration: o.critical ? '2s' : '1.5s',
-                              textShadow: o.critical 
-                                  ? '0 0 10px rgba(255,224,102,0.8)' 
-                                  : o.type === 'BUSTED' 
-                                      ? '0 0 10px rgba(239,68,68,0.8)' 
-                                      : 'none'
                           }}
                       >
                           {o.type === 'SUCCESS'
@@ -1917,38 +2536,15 @@ export default function App() {
           document.body
       )}
 
-      {/* ── HEADER ── */}
-      <div className="game-header">
-          <div className="flex items-center gap-4">
-              <span className="header-title text-amber-dark">SHADOW_GUILD_V1.0.0</span>
-              {DEV_MODE && (
-                  <span className="badge badge-green text-[9px] border border-green">DEV</span>
-              )}
-              {(state.prestige ?? 0) > 0 && (
-                  <span className="text-xs tracking-wider ml-4 text-orange border border-orange px-1" style={{ paddingTop: 1, paddingBottom: 1 }}>
-                      ◆ PRESTIGE {state.prestige}
-                  </span>
-              )}
-          </div>
-          <div className="flex gap-8 items-center">
-              {state.bustedLockout > 0 && (
-                  <span className="text-red text-xs font-bold tracking-widest">
-                      [BUSTED :: {state.bustedLockout}s]
-                  </span>
-              )}
-              <span className="text-muted text-sm">OPERATIVE_01</span>
-          </div>
-      </div>
-
       {/* ── MOBILE TAB BAR ── */}
       {isMobile && (
         <div className="fixed bottom-0 left-0 right-0 bg-surface-low border-t border-amber/30 z-50 flex justify-between px-2 py-2 pb-safe">
           {[
             { id: 'DASH', label: 'DASH' }, 
             { id: 'OPS', label: 'OPS' }, 
-            { id: 'AGENCY', label: isUnlocked(state, 'agency') ? 'AGN' : 'AGN', locked: !isUnlocked(state, 'agency')},
-            { id: 'UPGRADES', label: isUnlocked(state, 'upgrades_tab') ? 'UPG' : 'UPG', locked: !isUnlocked(state, 'upgrades_tab')}, 
-            { id: 'NET', label: isUnlocked(state, 'district') ? 'NET' : 'NET', locked: !isUnlocked(state, 'district')}, 
+            { id: 'AGENCY', label: 'AGN', locked: !isUnlocked(state, 'agency'), req: 'LVL 3' },
+            { id: 'UPGRADES', label: 'UPG', locked: !isUnlocked(state, 'upgrades_tab'), req: 'LVL 3' }, 
+            { id: 'AWAKENING', label: 'AWK', locked: !isUnlocked(state, 'mainframe'), req: 'LVL 8' },
             { id: 'SETTINGS', label: 'SYS' }
           ].map(t => {
             const isLocked = t.locked === true;
@@ -1959,20 +2555,26 @@ export default function App() {
                 onClick={() => {
                   if (isLocked) return;
                   setMobileTab(t.id);
+                  audioManager.tab();
                   if (t.id !== 'DASH') {
-                    const targetTab = t.id === 'OPS' ? 'OPERATIONS' : (t.id === 'NET' ? 'NETWORK' : t.id);
-                    setActiveTab(targetTab);
+                    // Mapovanie názvov tabov
+                    const targetMap = {
+                      'OPS': 'OPERATIONS', 
+                      'NET': 'NETWORK', 
+                      'AWAKENING': 'AWAKENING'
+                    };
+                    setActiveTab(targetMap[t.id] || t.id);
                   }
                 }}
                 className={cn(
-                  "tab flex-1 text-center py-3",
+                  "tab flex-1 text-center py-3 flex flex-col items-center justify-center",
                   mobileTab === t.id && "tab-active",
                   isLocked && "opacity-40 cursor-not-allowed"
                 )}
                 disabled={isLocked}
               >
-                {t.label}
-                {isLocked && t.req && <span className="text-[8px] block opacity-50">[LVL {t.req}]</span>}
+                <span>{t.label}</span>
+                {isLocked && t.req && <span className="text-sm block opacity-80">{t.req}</span>}
               </button>
             );
           })}
@@ -1987,309 +2589,267 @@ export default function App() {
         {/* Hlavný Grid - Všimni si pb-24 na mobile, aby taby dole nezakryli obsah */}
         <div className={isMobile ? "flex flex-col flex-1 overflow-y-auto scroll-none pb-24" : "game-grid"}>
 
-          {/* ── LEFT COL: DASHBOARD ── */}
+          {/* ── NOVÝ SIDEBAR ── */}
           {(!isMobile || mobileTab === 'DASH') && (
-            <div className={isMobile ? "w-full flex flex-col gap-4 p-8" : "game-col"}>
-                  
-                  {/* ── SLEEK OPERATIVE HEADER ── */}
-                  <div className="mb-20">
-                      <div className="text-[10px] text-amber tracking-[0.4rem] font-extrabold text-center mb-6 opacity-80">
-                          SYSTEM_ACCESS // ACTIVE
-                      </div>
-                      
-                      <div className="card-bordered relative w-full h-[90px] flex items-center justify-center border-amber">
-                          {/* Corner decorations */}
-                          <div className="absolute top-1 left-1 w-2 h-2 border-t border-l border-amber"></div>
-                          <div className="absolute top-1 right-1 w-2 h-2 border-t border-r border-amber"></div>
-                          <div className="absolute bottom-1 left-1 w-2 h-2 border-b border-l border-amber"></div>
-                          <div className="absolute bottom-1 right-1 w-2 h-2 border-b border-r border-amber"></div>
-                          
-                          <div className="text-center">
-                              <div className="text-[9px] text-muted tracking-[0.2rem]">OPERATIVE_ID</div>
-                              <div className="text-[32px] text-amber font-black leading-none">01</div>
-                          </div>
-                      </div>
-                  </div>
-
-                  {/* GLOBAL INTRUSION WARNING */}
-                  {Object.keys(state.reclaiming || {}).length > 0 && (
-                      <div className="intrusion-alert mb-6">
-                          !!! SYSTEM INTRUSION DETECTED !!!
-                      </div>
-                  )}
-
-                  {/* CRITICAL DECAY WARNING */}
-                  {criticalNodesCount > 0 && (
-                      <div className="warning-box mb-6">
-                          [!] SIGNAL DEGRADATION: {criticalNodesCount} NODE(S) FAILING
-                      </div>
-                  )}
-
-                  <span className="panel-header">:: OPERATIVE_STATUS</span>
-
-                  {/* LEGACY STATS */}
-                  {state.prestige > 0 && (
-                      <div className="card-info mt-10 mb-10 p-6">
-                          <div className="text-xs text-cyan tracking-[0.15rem] mb-4 font-bold">
-                              :: LEGACY_DATA
-                          </div>
-                          <div className="stat-row">
-                              <span className="stat-key">AWAKENING_LVL</span>
-                              <span className="stat-val text-cyan">{state.prestige}</span>
-                          </div>
-                          <div className="stat-row">
-                              <span className="stat-key">RUN_EARNED</span>
-                              <span className="stat-val">{Math.floor(state.runGoldEarned || 0).toLocaleString()} CR</span>
-                          </div>
-                          <div className="stat-row">
-                              <span className="stat-key">LIFETIME_CR</span>
-                              <span className="stat-val">{Math.floor(state.totalGoldEarned || 0).toLocaleString()} CR</span>
-                          </div>
-                      </div>
-                  )}
-
-                  {/* OPERATIVE STATS */}
-                  <div className="stat-row">
-                      <span className="stat-key"><Icon component={Coins} />GOLD</span>
-                      <span 
-                          key={`g${goldPulseKey}`} 
-                          className={cn("stat-val", goldPulseKey > 0 && "animate-gold")}
-                      >
-                          {state.gold.toLocaleString()} CR
-                          {mods.goldMult > 1 && (
-                              <span className="text-green text-xs ml-2 tracking-wide">
-                                  [+{Math.round((mods.goldMult - 1) * 100)}%]
-                              </span>
-                          )}
-                      </span>
-                  </div>
-
-                  {isUnlocked(state, 'rep') && (
-                      <div className="stat-row">
-                          <span className="stat-key"><Icon component={ShieldOff} />REP</span>
-                          <span 
-                              key={repPulseKey} 
-                              className={cn("stat-val", repPulseKey > 0 && "animate-gold")}
-                          >
-                              {state.reputation.toLocaleString()}
-                              {mods.repBoost > 0 && (
-                                  <span className="text-green text-xs ml-2 tracking-wide">
-                                      [+{Math.round(mods.repBoost * 100)}%]
-                                  </span>
-                              )}
-                          </span>
-                      </div>
-                  )}
-
-                  <div className="stat-row">
-                      <span className="stat-key"><Icon component={Activity} />LEVEL</span>
-                      <span className="stat-val">{state.level}</span>
-                  </div>
-
-                  {isUnlocked(state, 'xp') && (
-                      <>
-                          <div className="stat-row">
-                              <span className="stat-key"><Icon component={TrendingUp} />XP</span>
-                              <span className="stat-val">{state.xp.toLocaleString()} / {xpNeeded.toLocaleString()}</span>
-                          </div>
-                          <Bar pct={xpPct} variant="xp" />
-                      </>
-                  )}
-
-                  {isUnlocked(state, 'stamina') && (
-                      <>
-                          <div className="stat-row">
-                              <span className="stat-key"><Icon component={Zap} />STAMINA</span>
-                              <span className="stat-val">{state.stamina} / {effectiveMaxStamina}</span>
-                          </div>
-                          <Bar pct={staminaPct} variant="default" />
-                      </>
-                  )}
-
-                  {isUnlocked(state, 'heat') && (
-                      <>
-                          <div className="stat-row">
-                              <span className="stat-key"><Icon component={Flame} color={heatColor} />HEAT</span>
-                              <span className="stat-val" style={{ color: heatColor }}>
-                                  {heatRound}% [{heatStat}]
-                                  {(state.heatSpikeTimer ?? 0) > 0 && <span className="ml-2 text-xs text-red">SPIKE [{state.heatSpikeTimer}s]</span>}
-                              </span>
-                          </div>
-                          {/* Heat bar uses FTG gradient (Amber -> Red) */}
-                          <Bar pct={heatRound} variant="ftg" />
-                      </>
-                  )}
-
-                  {/* RUNNERS STATUS */}
-                  {(state.agents || []).filter(a => a.status === 'ACTIVE').length > 0 && (
-                      <div className="mt-6 pt-6 border-t border-surface-high">
-                          {['streetRunner', 'dataThief', 'infiltrator', 'fixer', 'shadowBroker'].map(role => {
-                              const activeAgents = (state.agents || []).filter(a => a.role === role && a.status === 'ACTIVE');
-                              if (activeAgents.length === 0) return null;
-                              
-                              const roleLabels = { streetRunner: 'S_RUN', dataThief: 'D_THIEF', infiltrator: 'INF', fixer: 'FIX', shadowBroker: 'S_BRKR' };
-                              const baseCycles = { streetRunner: DEV_MODE ? 5 : 30, dataThief: DEV_MODE ? 10 : 120, infiltrator: DEV_MODE ? 15 : 900, fixer: DEV_MODE ? 20 : 3600, shadowBroker: DEV_MODE ? 30 : 7200 };
-                              
-                              const hwLvl = state.upgrades?.hwOverclock ?? 0;
-                              const hwSpeedMult = Math.pow(0.85, hwLvl);
-                              const targetCycle = Math.max(1, Math.round(baseCycles[role] * hwSpeedMult));
-                              
-                              const maxTick = Math.max(0, ...activeAgents.map(a => a.tickCount || 0));
-                              const secondsLeft = Math.max(0, targetCycle - maxTick);
-
-                              return (
-                                  <div key={role} className="stat-row">
-                                      <span className="stat-key"><Icon component={Users} />{roleLabels[role]}</span>
-                                      <span className="stat-val text-sm text-green">
-                                          {activeAgents.length}x · +{calculateCycleTotal(role)} CR · {secondsLeft}s
-                                      </span>
-                                  </div>
-                              );
-                          })}
-                      </div>
-                  )}
-
-                  {/* PERSISTENT NETWORK STATS */}
-                  <div className="bandwidth-panel">
-                      <div className="text-md text-muted tracking-widest mb-4 border-b border-muted pb-2 font-extrabold">
-                          :: GRID_STATUS
-                      </div>
-                      
-                      <div className="flex flex-col gap-6">
-                          {/* BANDWIDTH SECTION */}
-                          <div className="pb-6 border-b border-amber/10">
-                              <div className="flex-between text-sm mb-2">
-                                  <span className="text-muted tracking-wide">BANDWIDTH_LOAD</span>
-                                  <span className={cn("font-black", overload > 0 ? "text-red" : "text-amber")}>
-                                      {usedBw} / {maxBw} Hz
-                                  </span>
-                              </div>
-                              
-                              {state.overclockActive && (
-                                  <div className="mb-4">
-                                      <span className="text-[10px] text-red font-bold animate-pulse">
-                                          [OVERRIDE_ACTIVE]
-                                      </span>
-                                  </div>
-                              )}
-                              
-                              <Bar 
-                                    pct={(usedBw / maxBw) * 100} 
-                                    // Ak je overload, pouzi gradient FTG (Amber -> Red), inak default Amber alebo Cyan podla stavu
-                                    variant={overload > 0 ? "ftg" : "default"} 
-                                    // Explicitna farba pre pripad, kedy nechceme variant
-                                    color={state.overclockActive ? '#ff2244' : '#00d4ff'} 
-                              />
-
-                              {overload > 0 && (
-                                  <div className="card-alert-reclaim mt-8 p-6 text-left">
-                                      <div className="font-bold mb-2 text-xs">[!] CRITICAL_OVERLOAD: +{overload} Hz</div>
-                                      <div>&gt; DECAY_MULTIPLIER: {100 + (overload * 300)}%</div>
-                                      <div>&gt; HEAT_LEAK: +{overload * 0.8}/sec</div>
-                                  </div>
-                              )}
-                          </div>
-
-                          {/* OTHER STATS GRID */}
-                          <div className="grid grid-3 gap-2">
-                              <div>
-                                  <div className="text-[10px] text-muted">REVENUE</div>
-                                  <div className="text-sm text-green font-bold">+{Math.round((mods.goldMult - 1) * 100)}%</div>
-                              </div>
-                              <div>
-                                  <div className="text-[10px] text-muted">XP_GAIN</div>
-                                  <div className="text-sm text-cyan font-bold">+{Math.round((mods.xpBoost ?? 0) * 100)}%</div>
-                              </div>
-                              <div>
-                                  <div className="text-[10px] text-muted">SIPHON</div>
-                                  <div className="text-sm text-purple font-bold">+{Math.round(mods.siphonSuccessBonus ?? 0)}%</div>
-                              </div>
-                          </div>
-                      </div>
-                  </div>
-
-                  {/* SYSTEM OVERRIDE PROTOCOL (OVERCLOCK) */}
-                  <div className={cn(
-                      "mt-10 mb-10 p-10 border transition-all",
-                      state.overclockActive ? "overclock-active" : "overclock-inactive"
-                  )}>
-                      <div className={cn(
-                          "text-md tracking-widest mb-6 font-bold",
-                          state.overclockActive ? "text-red" : "text-muted"
-                      )}>
-                          :: OVERRIDE_PROTOCOL
-                      </div>
-                      
-                      <div className="text-[10px] text-muted mb-12 leading-relaxed">
-                          Force inject +2 temporary Bandwidth to bypass network limits.
-                          <br/>
-                          <span className="text-red font-bold">WARNING:</span> 
-                          <br/>• HEAT_LEAK: +0.8/s per overload level
-                          <br/>• DECAY_MULTIPLIER: +300% per overload level
-                          <br/>• Use only for rapid tactical captures. Disable ASAP.
-                      </div>
-
-                      <button 
-                        onClick={() => dispatch({ type: 'TOGGLE_OVERCLOCK' })}
-                        disabled={state.overclockCooldown > 0 && !state.overclockActive}
-                        className={cn(
-                          "btn-override w-full py-2 text-xs font-black tracking-wider uppercase transition-all duration-300",
-                          state.overclockActive && "btn-override-active",
-                          (state.overclockCooldown > 0 && !state.overclockActive) && "btn-override-disabled"
-                        )}
-                      >
-                        {state.overclockActive 
-                          ? '[!] CANCEL OVERRIDE [!]' 
-                          : state.overclockCooldown > 0 
-                            ? `SYS_COOLING: ${Math.floor(state.overclockCooldown / 60)}m ${state.overclockCooldown % 60}s` 
-                            : 'INITIATE OVERRIDE'
-                        }
-                      </button>
-                  </div>
-
-                  {/* OFFLINE WARNING */}
-                  {state.isIdle && (
-                      <div className="warning-box">
-                          [ SYSTEM IDLE :: INCOME REDUCED TO 60% ]
-                      </div>
-                  )}
-
-                  {/* RUNNER ECONOMY OVERVIEW */}
-                  <div className="card-bordered mb-10">
-                      <div className="text-md text-muted tracking-widest mb-6 border-b border-muted pb-4">
-                          :: OPERATIVE_YIELD
-                      </div>
-                      <div className="flex-between">
-                          <span className="text-xl text-amber">TOTAL ACTIVE:</span>
-                          <span className="text-xl font-bold">{Object.values(state.runners || {}).reduce((a, b) => a + b, 0)}</span>
-                      </div>
-                      <div className="text-[10px] text-muted mt-6 leading-relaxed">
-                          Active operatives generate passive CR based on their spec and current cycle time. Idle mode restricts total output.
-                      </div>
-                  </div>
-
-                  {/* QUEUED SPECIALIZATIONS */}
-                  {pendingSpecs.length > 0 && (
-                      <div className="card-info mb-10">
-                          <div className="text-xs text-cyan font-bold tracking-widest mb-6">
-                              :: {pendingSpecs.length} OPERATIVE(S) AWAITING SPECIALIZATION ::
-                          </div>
-                          <div className="flex flex-wrap gap-4">
-                              {pendingSpecs.map(runner => (
-                                  <button 
-                                      key={runner} 
-                                      onClick={() => setSpecModal(runner)} 
-                                      className="btn btn-cyan text-center"
-                                      style={{ width: 'auto', margin: 0 }}
-                                  >
-                                      [ PROMOTE {runner.replace('Runner', '').toUpperCase()} ]
-                                  </button>
-                              ))}
-                          </div>
-                      </div>
-                  )}
-              </div>
+            <Sidebar state={state} dispatchWithSound={dispatchWithSound} />
           )}
+
+          {/* ── LEFT COL: DASHBOARD ── 
+          {(!isMobile || mobileTab === 'DASH') && (
+            <div className={cn("game-col", "dashboard-sidebar")}>
+
+              {/* ── LOGO HEADER ── 
+              <div className="dash-header">
+                <div className="dash-title">SHADOW_GUILD</div>
+                <span className="dash-version">V1.0.0</span>
+              </div>
+              <div className="dash-status">
+                <span className="dash-status-dot animate-pulse" />
+                <span className="text-[9px] text-green tracking-widest uppercase animate-pulse">TRANSMITTING</span>
+                {state.prestige > 0 && (
+                  <div className="ml-auto">
+                    <Tag color="var(--gold)" filled>★ P{state.prestige}</Tag>
+                  </div>
+                )}
+              </div>
+
+              {/* ── OPERATIVE ID CARD ── 
+              <div className="op-id-card">
+                <div className="op-id-pattern" />
+                <div className="relative z-10">
+                  <div className="op-id-label">OPERATIVE_ID</div>
+                  <div className="op-id-value">
+                    {String(state.prestige + 1).padStart(2, '0')}
+                  </div>
+                  <div className="op-id-row">
+                    <span className="text-muted">CLASS</span>
+                    <span className="text-amber">SPECTER-{state.level}</span>
+                  </div>
+                  <div className="op-id-row">
+                    <span className="text-muted">SECTOR</span>
+                    {/* Dynamický názov sektoru z mapy 
+                    <span className="text-amber">
+                      {AETHERIA_DISTRICTS[state.district]?.name || state.district || 'UNKNOWN'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* GLOBAL INTRUSION WARNING 
+              {Object.keys(state.reclaiming || {}).length > 0 && (
+                <div className="intrusion-alert mb-6">!!! SYSTEM INTRUSION DETECTED !!!</div>
+              )}
+
+              {/* ── VITALS ── 
+              <div className="mb-6">
+                <div className="text-sm text-muted tracking-[0.25em] uppercase mb-6">:: VITALS</div>
+
+                {/* CREDITS - Primary Currency 
+                <div className="vitals-block" style={{ borderLeftColor: 'var(--amber)' }}>
+                  <div className="vitals-label flex items-center gap-2">
+                    <Icon component={Coins} size={12} />
+                    CREDITS
+                    {mods.goldMult > 1 && <span className="text-green ml-2">[+{Math.round((mods.goldMult - 1) * 100)}%]</span>}
+                  </div>
+                  <div className="vitals-value">
+                    {state.gold.toLocaleString()} 
+                    <span className="vitals-unit"> CR</span>
+                    {traineesCount > 0 && <Tag color="var(--red)" filled className="ml-2">DRAIN</Tag>}
+                  </div>
+                </div>
+
+                {/* GOLD - Prestige Currency 
+                {state.prestige > 0 && (
+                  <div className="vitals-block" style={{ borderLeftColor: 'var(--gold)' }}>
+                    <div className="vitals-label flex items-center gap-2">
+                      <Icon component={Coins} size={12} color="var(--gold)" />
+                      GOLD (LEGACY)
+                    </div>
+                    <div className="vitals-value" style={{ color: 'var(--gold)' }}>
+                      {state.gold.toLocaleString()} 
+                      <span className="vitals-unit">AU</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* REP - Secondary Currency 
+                {isUnlocked(state, 'rep') && (
+                  <div className="vitals-block" style={{ borderLeftColor: 'var(--purple)' }}>
+                    <div className="vitals-label flex items-center gap-2">
+                      <Icon component={ShieldOff} size={12} color="var(--purple)" />
+                      REP
+                      {mods.repBoost > 0 && <span className="text-green ml-2">[+{Math.round(mods.repBoost * 100)}%]</span>}
+                    </div>
+                    <div className="vitals-value" style={{ color: 'var(--purple)' }}>
+                      {state.reputation.toLocaleString()}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── STATUS BARS ── 
+                <div className="mb-2">
+                  <div className="text-sm text-muted tracking-widest uppercase">:: STATUS</div>
+                </div>
+
+                {/* XP Bar 
+                <div className="mb-4">
+                  <Row 
+                    label={<><Icon component={Activity} size={10} className="mr-1" /> LVL {state.level}</>} 
+                    value={`${state.xp.toLocaleString()} / ${xpNeeded.toLocaleString()}`} 
+                    color="var(--purple)" 
+                    className="b-row-clean" 
+                  />
+                  <div className="mt-1"><Bar pct={xpPct} variant="xp" /></div>
+                </div>
+
+                {/* Heat Bar 
+                <div className="mb-4">
+                  <Row 
+                    label={<><Icon component={Flame} size={10} color={heatColor} className="mr-1" /> HEAT</>} 
+                    value={`${heatRound}%`}
+                    color={heatColor}
+                    className="b-row-clean" 
+                  />
+                  <div className="mt-1"><Bar pct={heatRound} variant="ftg" /></div>
+                </div>
+
+                {/* Stamina Bar 
+                <div className="mb-4">
+                  <Row 
+                    label={<><Icon component={Zap} size={10} className="mr-1" /> STAMINA</>} 
+                    value={`${Math.floor(state.stamina)} / ${effectiveMaxStamina}`}
+                    className="b-row-clean" 
+                  />
+                  <div className="mt-1"><Bar pct={staminaPct} variant="default" /></div>
+                </div>
+              </div>
+
+              {/* ── RUNNERS STATUS (Namiesto Flow Rates) ── 
+              {(state.agents || []).filter(a => a.status === 'ACTIVE').length > 0 && (
+                <div>
+                  <div className="text-[9px] text-muted tracking-[0.25em] uppercase mb-6">:: ACTIVE_RUNNERS</div>
+                  
+                  {['streetRunner', 'dataThief', 'infiltrator', 'fixer', 'shadowBroker'].map(role => {
+                    const activeAgents = (state.agents || []).filter(a => a.role === role && a.status === 'ACTIVE');
+                    if (activeAgents.length === 0) return null;
+
+                    const roleLabels = { streetRunner: 'S_RUN', dataThief: 'D_THIEF', infiltrator: 'INF', fixer: 'FIX', shadowBroker: 'S_BRKR' };
+                    const baseCycles = { streetRunner: DEV_MODE ? 5 : 30, dataThief: DEV_MODE ? 10 : 120, infiltrator: DEV_MODE ? 15 : 900, fixer: DEV_MODE ? 20 : 3600, shadowBroker: DEV_MODE ? 30 : 7200 };
+
+                    const hwLvl = state.upgrades?.hwOverclock ?? 0;
+                    const hwSpeedMult = Math.pow(0.85, hwLvl);
+                    const targetCycle = Math.max(1, Math.round(baseCycles[role] * hwSpeedMult));
+
+                    // Zoberieme max tick z aktívnych agentov tohto typu
+                    const maxTick = Math.max(0, ...activeAgents.map(a => a.tickCount || 0));
+                    const secondsLeft = Math.max(0, targetCycle - maxTick);
+
+                    return (
+                      <div key={role} className="stat-row">
+                        <span className="stat-key"><Icon component={Users} />{roleLabels[role]}</span>
+                        <span className="stat-val text-sm text-green">
+                          {activeAgents.length}x · +{calculateCycleTotal(role)} CR · {secondsLeft}s
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* ── GRID STATUS ── 
+              {isUnlocked(state, 'district') && (
+                <div className="bandwidth-panel">
+                  {/* Header 
+                  <div className="text-[10px] text-muted tracking-[0.25em] uppercase mb-4 font-bold">
+                    :: GRID_STATUS
+                  </div>
+
+                  {/* Bandwidth Section 
+                  <div>
+                    <div className="flex-between text-sm mb-2">
+                      <span className="text-muted tracking-wide flex items-center gap-2">
+                        <Icon component={Activity} size={12} /> BANDWIDTH_LOAD
+                      </span>
+                      <span className={cn("font-black", overload > 0 ? "text-red" : "text-amber")}>
+                        {usedBw} / {maxBw} Hz
+                      </span>
+                    </div>
+                    
+                    <Bar 
+                      pct={(usedBw / maxBw) * 100} 
+                      variant={overload > 0 ? "ftg" : "default"} 
+                    />
+
+                    {/* Overclock Warning - vnorené priamo pod bar 
+                    {state.overclockActive && (
+                      <div className="mt-3 p-2 border border-red-full text-center">
+                        <span className="text-[10px] text-red font-bold animate-pulse">! OVERRIDE_ACTIVE !</span>
+                      </div>
+                    )}
+
+                    {/* Overload Alert 
+                    {overload > 0 && (
+                      <div className="mt-3 p-3 text-left text-[10px] text-red border border-red-full">
+                        <div className="font-bold mb-1">[!] CRITICAL_OVERLOAD: +{overload} Hz</div>
+                        <div className="opacity-80">DECAY_MULT: {100 + (overload * 300)}% | HEAT_LEAK: +{overload * 0.8}/s</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Stats Grid 
+                  <div className="grid grid-3 gap-2 mt-2">
+                    <MiniStat label="BAND" value={usedBw} unit="Hz" color="var(--cyan)" />
+                    <MiniStat label="REV" value={`+${mods.revenuePct ?? 0}`} unit="%" color="var(--green)" />
+                    <MiniStat label="XP" value={`+${Math.round((mods.xpBoost ?? 0) * 100)}`} unit="%" color="var(--purple)" />
+                  </div>
+                </div>
+              )}
+
+              {/* ── OVERRIDE PROTOCOL ── 
+              {isUnlocked(state, 'manual_cool') && (
+                <div className={cn(
+                  "p-4 border transition-all",
+                  state.overclockActive ? "overclock-active" : "border-surface-high" // Použijeme triedy z index.css
+                )}>
+                  <div className={cn(
+                    "text-[10px] tracking-widest mb-3 font-bold uppercase",
+                    state.overclockActive ? "text-red" : "text-muted"
+                  )}>
+                    :: OVERRIDE_PROTOCOL
+                  </div>
+                  
+                  <div className="text-[10px] text-muted mb-4 leading-relaxed">
+                    Force inject +2 Bandwidth. 
+                    <br/><span className="text-red font-bold">WARNING:</span> 
+                    <br/>• HEAT_LEAK: +0.8/s
+                    <br/>• DECAY_MULT: +300%
+                  </div>
+
+                  <button
+                    onClick={() => dispatchWithSound({ type: 'TOGGLE_OVERCLOCK' })}
+                    disabled={state.overclockCooldown > 0 && !state.overclockActive}
+                    className={cn(
+                      "btn-override w-full py-3 text-xs font-black tracking-wider uppercase",
+                      state.overclockActive ? "btn-override-active" : "btn-override"
+                    )}
+                  >
+                    {state.overclockActive 
+                      ? '[!] CANCEL OVERRIDE' 
+                      : state.overclockCooldown > 0 
+                        ? `SYS_COOLING: ${Math.floor(state.overclockCooldown / 60)}m ${state.overclockCooldown % 60}s` 
+                        : 'INITIATE OVERRIDE'
+                    }
+                  </button>
+                </div>
+              )}
+
+              {/* ── FOOTER ── 
+              <div className="mt-auto pt-8 text-center text-[9px] text-muted tracking-widest opacity-80">
+                :: UPLINK_ENCRYPTED ::
+              </div>
+
+            </div>
+          )} */}
 
           
           {/* ── CENTER COL: TABS ── */}
@@ -2299,232 +2859,337 @@ export default function App() {
               {/* TABS HEADER */}
               {!isMobile && (
                 <div className="flex gap-2 mb-14 border-b border-surface-high pb-0">
-                  <Tab 
-                    label="OPS" 
-                    active={activeTab === 'OPERATIONS'} 
-                    onClick={() => setActiveTab('OPERATIONS')} 
+                  <Tab
+                    label="OPS"
+                    active={activeTab === 'OPERATIONS'}
+                    onClick={() => { setActiveTab('OPERATIONS'); audioManager.tab(); }}
                   />
-                  <Tab 
-                    label="AGENCY" 
-                    active={activeTab === 'AGENCY'} 
+                  <Tab
+                    label="AGENCY"
+                    active={activeTab === 'AGENCY'}
                     disabled={!isUnlocked(state, 'agency')}
-                    onClick={() => setActiveTab('AGENCY')} 
+                    onClick={() => { setActiveTab('AGENCY'); audioManager.tab(); }}
+                    className={isNewlyUnlocked('agency') ? 'unlock-reveal' : undefined}
                   />
-                  <Tab 
-                    label="UPGRADES" 
-                    active={activeTab === 'UPGRADES'} 
+                  <Tab
+                    label="UPGRADES"
+                    active={activeTab === 'UPGRADES'}
                     disabled={!isUnlocked(state, 'upgrades_tab')}
-                    onClick={() => setActiveTab('UPGRADES')} 
+                    onClick={() => { setActiveTab('UPGRADES'); audioManager.tab(); }}
+                    className={isNewlyUnlocked('upgrades_tab') ? 'unlock-reveal' : undefined}
                   />
-                  <Tab 
-                    label="NETWORK" 
-                    active={activeTab === 'NETWORK'} 
+                  <Tab
+                    label="NETWORK"
+                    active={activeTab === 'NETWORK'}
                     disabled={!isUnlocked(state, 'district')}
-                    onClick={() => setActiveTab('NETWORK')} 
+                    onClick={() => { setActiveTab('NETWORK'); audioManager.tab(); }}
+                    className={isNewlyUnlocked('district') ? 'unlock-reveal' : undefined}
                   />
-                  <Tab 
-                    label="SETTINGS" 
-                    active={activeTab === 'SETTINGS'} 
-                    onClick={() => setActiveTab('SETTINGS')} 
+                  <Tab
+                    label="AWAKENING"
+                    active={activeTab === 'AWAKENING'}
+                    disabled={!isUnlocked(state, 'mainframe')} // Odomkne sa pri Lvl 8
+                    onClick={() => { setActiveTab('AWAKENING'); audioManager.tab(); }}
+                    className={isNewlyUnlocked('mainframe') ? 'unlock-reveal' : undefined}
+                  />
+                  <Tab
+                    label="SETTINGS"
+                    active={activeTab === 'SETTINGS'}
+                    onClick={() => { setActiveTab('SETTINGS'); audioManager.tab(); }}
                   />
                 </div>
               )}
 
-              {/* ── NETWORK TAB ── */}
+              {/* ── NOVÝ NETWORK TAB ── */}
               {activeTab === 'NETWORK' && isUnlocked(state, 'district') && (
-                <div className="flex-1 min-h-0 flex flex-col">
-                  <NetworkManager state={state} dispatch={dispatch} />
-                </div>
+                <NetworkTab state={state} dispatchWithSound={dispatchWithSound} />
               )}
 
-              
-            {/* ── 2. OPS TAB ── */}
+            {/* ── NOVÝ OPS ── */}
+            {activeTab === 'OPERATIONS' && (
+              <OpsTab state={state} dispatchWithSound={dispatchWithSound} />
+            )}
+
+
+
+            {/* ── 2. OPS TAB ── 
             {activeTab === 'OPERATIONS' && (
               <div className="flex-1 flex flex-col overflow-y-auto gap-6 scroll-none">
                 
-                {/* ── SECTION 1: TARGET BRIEFING ── */}
-                <div 
-                  className="card-bordered relative overflow-hidden flex-shrink-0"
-                  style={{ borderColor: AETHERIA_DISTRICTS[state.district]?.color || 'var(--muted)' }}
-                >
-                  {/* Dekoratívne pozadie */}
+                {/* ── SECTION 1: TARGET BRIEFING ── 
+                {isUnlocked(state, 'district') ? (
                   <div 
-                    className="absolute right-[-20px] top-[-10px] text-[72px] font-black pointer-events-none select-none"
-                    style={{ color: AETHERIA_DISTRICTS[state.district]?.color, opacity: 0.06 }}
+                    className="card-bordered relative overflow-hidden flex-shrink-0"
+                    style={{ borderColor: AETHERIA_DISTRICTS[state.district]?.color || 'var(--muted)' }}
                   >
-                    {state.district}
-                  </div>
+                    {/* ... existujúci kód zostáva rovnaký ... 
+                    {/* Dekoratívne pozadie 
+                    <div 
+                      className="absolute right-[-20px] top-[-10px] text-[72px] font-black pointer-events-none select-none"
+                      style={{ color: AETHERIA_DISTRICTS[state.district]?.color, opacity: 0.06 }}
+                    >
+                      {state.district}
+                    </div>
 
-                  <div className="flex-between items-start mb-6 relative z-10">
-                    <div>
-                      <div className="text-md text-muted tracking-widest mb-2">:: ACTIVE_OPERATION_TARGET</div>
-                      <div 
-                        className="text-lg font-bold tracking-widest uppercase text-4xl"
-                        style={{ color: AETHERIA_DISTRICTS[state.district]?.color }}
-                      >
-                        {AETHERIA_DISTRICTS[state.district]?.name || 'UNKNOWN_SECTOR'}
+                    <div className="flex-between items-start mb-6 relative z-10">
+                      <div>
+                        <div className="text-md text-muted tracking-widest mb-2">:: ACTIVE_OPERATION_TARGET</div>
+                        <div 
+                          className="text-lg font-bold tracking-widest uppercase text-4xl"
+                          style={{ color: AETHERIA_DISTRICTS[state.district]?.color }}
+                        >
+                          {AETHERIA_DISTRICTS[state.district]?.name || 'UNKNOWN_SECTOR'}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div 
+                          className="text-6xl font-black"
+                          style={{ color: AETHERIA_DISTRICTS[state.district]?.color }}
+                        >
+                          x{AETHERIA_DISTRICTS[state.district]?.lootMultiplier || '1.0'}
+                        </div>
+                        <div className="text-sm text-muted">LOOT MULTIPLIER</div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div 
-                        className="text-6xl font-black"
-                        style={{ color: AETHERIA_DISTRICTS[state.district]?.color }}
-                      >
-                        x{AETHERIA_DISTRICTS[state.district]?.lootMultiplier || '1.0'}
-                      </div>
-                      <div className="text-sm text-muted">LOOT MULTIPLIER</div>
-                    </div>
-                  </div>
 
-                  {/* District Buttons */}
-                  <div className="flex flex-wrap gap-2 mb-6 relative z-10">
-                    {[...new Set((state.capturedHexes || []).map(id => AETHERIA_MAP[id]?.districtId).filter(Boolean))].map(dId => (
-                      <button
-                        key={dId}
-                        onClick={() => dispatch({ type: 'SET_DISTRICT', district: dId })}
-                        className={cn(
-                          "btn btn-xs",
-                          state.district === dId ? "btn-active" : ""
-                        )}
-                        style={{ 
-                          borderColor: AETHERIA_DISTRICTS[dId]?.color,
-                          color: state.district === dId ? 'var(--bg)' : AETHERIA_DISTRICTS[dId]?.color,
-                          backgroundColor: state.district === dId ? (AETHERIA_DISTRICTS[dId]?.color) : 'transparent'
-                        }}
-                      >
-                        {AETHERIA_DISTRICTS[dId]?.name || dId}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="text-sm text-muted leading-relaxed relative z-10">
-                    {AETHERIA_DISTRICTS[state.district]?.desc}
-                  </div>
-                </div>
-
-                {/* ── SECTION 2: PROTOCOLS ── */}
-                {isUnlocked(state, 'protocol') && (
-                  <div className="card">
-                    <div className="flex-between mb-4">
-                      <span className="text-md text-muted tracking-widest uppercase">:: OPERATION_PROTOCOL</span>
-                      {activeProtoDef && (
-                        <span className="text-xs font-bold" style={{ color: activeProtoDef.color }}>
-                          [{activeProtocol}]
-                        </span>
-                      )}
+                    {/* District Buttons 
+                    <div className="flex flex-wrap gap-2 mb-6 relative z-10">
+                      {[...new Set((state.capturedHexes || []).map(id => AETHERIA_MAP[id]?.districtId).filter(Boolean))].map(dId => (
+                        <button
+                          key={dId}
+                          onClick={() => dispatchWithSound({ type: 'SET_DISTRICT', district: dId })}
+                          className={cn(
+                            "btn btn-xs",
+                            state.district === dId ? "btn-active" : ""
+                          )}
+                          style={{ 
+                            borderColor: AETHERIA_DISTRICTS[dId]?.color,
+                            color: state.district === dId ? 'var(--bg)' : AETHERIA_DISTRICTS[dId]?.color,
+                            backgroundColor: state.district === dId ? (AETHERIA_DISTRICTS[dId]?.color) : 'transparent'
+                          }}
+                        >
+                          {AETHERIA_DISTRICTS[dId]?.name || dId}
+                        </button>
+                      ))}
                     </div>
 
-                    <div className="flex gap-2">
-                      {Object.entries(PROTOCOL_DEFS).map(([key, def]) => {
-                        const active = activeProtocol === key;
-                        return (
-                          <button
-                            key={key}
-                            onClick={() => dispatch({ type: 'SET_PROTOCOL', protocol: key })}
-                            className={cn("proto-btn", active && "proto-btn-active")}
-                            style={{ 
-                              borderColor: active ? def.color : 'var(--muted)',
-                              color: active ? def.color : 'var(--muted)'
-                            }}
-                          >
-                            {def.label}
-                            <span className="block text-[10px] opacity-75 mt-1">
-                              {def.desc}
-                            </span>
-                          </button>
-                        );
-                      })}
+                    <div className="text-sm text-muted leading-relaxed relative z-10">
+                      {AETHERIA_DISTRICTS[state.district]?.desc}
                     </div>
-
-                    {activeProtocol !== 'NONE' && (
-                      <button
-                        onClick={() => dispatch({ type: 'SET_PROTOCOL', protocol: 'NONE' })}
-                        className="btn btn-danger w-full mt-4"
-                      >
-                        DEACTIVATE_PROTOCOL
-                      </button>
-                    )}
+                  </div>
+                ) : (
+                  // Fallback pre early game — kým nie je district unlocked
+                  <div className="card-bordered relative overflow-hidden flex-shrink-0" style={{ borderColor: 'var(--muted)' }}>
+                    <div className="text-lg font-bold text-amber tracking-widest">:: TARGET_LOCKED</div>
+                    <div className="text-xs text-muted mt-2 leading-relaxed">
+                      Secure funds to access network nodes.<br/>
+                      <span className="text-[10px] opacity-60">[Unlock: LVL 6 + 50 REP]</span>
+                    </div>
                   </div>
                 )}
 
-                {/* ── SECTION 3: COMBO + ACTIONS ── */}
-                <div className="flex-shrink-0">
-                  {/* Combo Meter */}
-                  <div className={cn(
-                    "combo-meter",
-                    comboCount > 0 && "combo-meter-active",
-                    comboHigh && "combo-meter-high"
-                  )}>
-                    {comboCount > 0 && (
-                      <>
-                        <span className={cn("text-sm font-bold tracking-widest", comboHigh ? "text-amber" : "text-muted")}>
-                          COMBO x{comboCount}
-                        </span>
-                        <span className="text-sm text-muted">
-                          [+{Math.round(comboPct * 100)}% VALUE]
-                        </span>
-                      </>
-                    )}
-                  </div>
+                {/* ── SECTION 2: PROTOCOLS ── 
+                {isUnlocked(state, 'protocol') && (
+                    // Pridané wrapper div s animáciou
+                    <div className={cn(isNewlyUnlocked('protocol') && 'unlock-reveal')}>
+                      <div className="card">
+                        <div className="flex-between mb-4">
+                          <span className="text-md text-muted tracking-widest uppercase">:: OPERATION_PROTOCOL</span>
+                          {activeProtoDef && (
+                            <span className="text-xs font-bold" style={{ color: activeProtoDef.color }}>
+                              [{activeProtocol}]
+                            </span>
+                          )}
+                        </div>
 
-                  {/* Action Buttons Grid */}
-                  <div className="flex flex-wrap gap-4">
-                    {[
-                      { id: 'SIPHON', label: `SIPHON_ [${siphonCost} STA]`, chance: siphonChance, disabled: isBlocked || state.stamina < siphonCost || invFull },
-                      { id: 'BREACH', label: 'BREACH_ [25 STA]', chance: breachChance, disabled: isBlocked || state.stamina < 25 || invFull, cond: isUnlocked(state, 'breach') },
-                      { id: 'DEEP_SIPHON', label: 'DEEP_SIPHON_ [15 STA]', chance: deepSiphonChance, disabled: isBlocked || state.stamina < 15 || invFull, cond: isUnlocked(state, 'deep_siphon') },
-                      { id: 'MAINFRAME_HACK', label: 'MAINFRAME_HACK_ [40 STA]', chance: mainframeChance, disabled: isBlocked || state.stamina < 40 || invFull, cond: isUnlocked(state, 'mainframe') },
-                      { id: 'LAY_LOW', label: `LAY_LOW_ ${state.layLowActive ? `[${state.layLowTimer}s]` : ''}`, disabled: state.bustedLockout > 0 || (state.layLowCooldown > 0 && !state.raidActive), active: state.layLowActive },
-                      { id: 'SELL_COOLED_ITEMS', label: 'SELL_COOLED_ITEMS_', disabled: coldCount === 0, extra: coldCount > 0 ? <span className="text-green">[+{coldValue.toLocaleString()} CR]</span> : <span className="text-muted">[WAIT FOR COLD]</span> },
-                      { id: 'MANUAL_COOL', label: 'COOL_DOWN_ [-15s · 5 STA]', disabled: hotItems.length === 0 || state.stamina < 5, cond: isUnlocked(state, 'manual_cool') },
-                      { id: 'DARK_MARKET', label: 'DARK_MARKET_', disabled: dmDisabled, cond: isUnlocked(state, 'dark_market') },
-                      { id: 'BARTER', label: 'BARTER_ [10x DATA_CHIP → +1 REP]', disabled: barterDisabled, cond: isUnlocked(state, 'barter') },
-                    ].filter(btn => btn.cond !== false).map(btn => (
-                      <ProtoBtn
-                        key={btn.id}
-                        onClick={() => dispatch({ type: btn.id })}
-                        disabled={btn.disabled}
-                        active={btn.active}
-                        className="flex-[1_1_calc(50%-6px)] min-h-[38px] justify-center"
-                      >
-                        {btn.label}
-                        {btn.chance !== null && btn.chance !== undefined && <span className="ml-2 opacity-60 text-xs">[{btn.chance}%]</span>}
-                        {btn.extra}
-                        
-                        {/* DARK MARKET Specifics */}
-                        {btn.id === 'DARK_MARKET' && !dmUnlocked && (
-                          <span className="ml-2 text-red text-xs">[LOCKED: LVL 4 + 50 REP]</span>
+                        <div className="flex gap-2">
+                          {Object.entries(PROTOCOL_DEFS).map(([key, def]) => {
+                            const active = activeProtocol === key;
+                            return (
+                              <button
+                                key={key}
+                                onClick={() => dispatchWithSound({ type: 'SET_PROTOCOL', protocol: key })}
+                                className={cn("proto-btn", active && "proto-btn-active")}
+                                style={{ 
+                                  borderColor: active ? def.color : 'var(--muted)',
+                                  color: active ? def.color : 'var(--muted)'
+                                }}
+                              >
+                                {def.label}
+                                <span className="block text-[10px] opacity-75 mt-1">
+                                  {def.desc}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {activeProtocol !== 'NONE' && (
+                          <button
+                            onClick={() => dispatchWithSound({ type: 'SET_PROTOCOL', protocol: 'NONE' })}
+                            className="btn btn-danger w-full mt-4"
+                          >
+                            DEACTIVATE_PROTOCOL
+                          </button>
                         )}
-                        {btn.id === 'DARK_MARKET' && dmUnlocked && dmBusy && (
-                          <span className="ml-2 text-muted text-xs">
-                            [CD: {fmtDuration(state.darkMarketCooldown)}]
-                            {(() => {
-                              const mapMods = calculateMapModifiers(state);
-                              const cdReduction = mapMods.darkMarketCd || 0;
-                              const intelReduction = ((state.intelUpgrades?.darkExchange ?? 0) >= 1) ? 1800 : 0;
-                              return (
-                                <>
-                                  {cdReduction < 0 && <span className="text-green ml-1">[{-cdReduction / 60}m NODE]</span>}
-                                  {intelReduction > 0 && <span className="text-green ml-1">[-30m INTEL]</span>}
-                                </>
-                              );
-                            })()}
+                      </div>
+                    </div>
+                  )}
+
+                {/* ── SECTION 3: COMBO + ACTIONS ── 
+                <div className="flex-shrink-0">
+                  {/* Combo Meter 
+                  {isUnlocked(state, 'combo') && (
+                    <div className={cn(
+                      "combo-meter",
+                      comboCount > 0 && "combo-meter-active",
+                      comboHigh && "combo-meter-high",
+                      comboCount >= 10 && comboCount < 15 && "animate-pulse"
+                    )}>
+                      {comboCount > 0 && (
+                        <>
+                          <span className={cn(
+                            "text-sm font-bold tracking-widest",
+                            comboCount >= 15 ? "text-gold animate-gold" : "text-amber"
+                          )}>
+                            COMBO x{comboCount}
                           </span>
-                        )}
-                        {btn.id === 'DARK_MARKET' && dmUnlocked && !dmBusy && state.inventory.length > 0 && (
-                          <span className="ml-2 text-green text-xs">[+{Math.floor(state.inventory.reduce((sum, i) => sum + i.gold, 0) * 0.6).toLocaleString()} CR]</span>
-                        )}
-                        {btn.id === 'DARK_MARKET' && dmUnlocked && !dmBusy && state.inventory.length === 0 && (
-                          <span className="ml-2 text-muted text-xs">[NO ITEMS]</span>
-                        )}
-                                                        
-                        {btn.id === 'BARTER' && (state.barterCooldown ?? 0) > 0 && <span className="ml-2 text-muted text-xs">[CD]</span>}
-                      </ProtoBtn>
-                    ))}
+                          <span className="text-sm text-muted">
+                            [+{Math.round(comboPct * 100)}% VALUE]
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ACTION BUTTONS GRID 
+                  <div className="flex flex-wrap gap-4">
+                    {(() => {
+                      const protocolChanceMod = state.activeProtocol === 'SILENT_RUN' ? -20 : 0; 
+                      const applyMod = (chance) => (chance !== null && chance !== undefined) ? Math.max(0, chance + protocolChanceMod) : null;
+
+                      const actionButtons = [
+                        { 
+                          id: 'SIPHON', 
+                          title: 'SIPHON_ ', 
+                          target: `[${siphonCost} STA]`, 
+                          chance: applyMod(siphonChance), 
+                          disabled: isBlocked || state.stamina < siphonCost || invFull 
+                        },
+                        { 
+                          id: 'BREACH', 
+                          title: 'BREACH_ ', 
+                          target: '[25 STA]', 
+                          chance: applyMod(breachChance), 
+                          disabled: isBlocked || state.stamina < 25 || invFull, 
+                          cond: isUnlocked(state, 'breach'), 
+                          unlockId: 'breach' 
+                        },
+                        { 
+                          id: 'DEEP_SIPHON', 
+                          title: 'DEEP_SIPHON_ ', 
+                          target: '[15 STA]', 
+                          chance: applyMod(deepSiphonChance), 
+                          disabled: isBlocked || state.stamina < 15 || invFull, 
+                          cond: isUnlocked(state, 'deep_siphon'), 
+                          unlockId: 'deep_siphon' 
+                        },
+                        { 
+                          id: 'MAINFRAME_HACK', 
+                          title: 'MAINFRAME_HACK_ ', 
+                          target: '[40 STA]', 
+                          chance: applyMod(mainframeChance), 
+                          disabled: isBlocked || state.stamina < 40 || invFull, 
+                          cond: isUnlocked(state, 'mainframe'), 
+                          unlockId: 'mainframe' 
+                        },
+                        { 
+                          id: 'LAY_LOW', 
+                          title: 'LAY_LOW_', 
+                          target: state.layLowActive ? ` [${state.layLowTimer}s]` : '', 
+                          disabled: state.bustedLockout > 0 || (state.layLowCooldown > 0 && !state.raidActive), 
+                          active: state.layLowActive 
+                        },
+                        { 
+                          id: 'SELL_COOLED_ITEMS', 
+                          title: 'SELL_COOLED_ITEMS_ ', 
+                          target: coldCount > 0 ? `[+${coldValue.toLocaleString()} CR]` : '', 
+                          targetColor: 'text-green',
+                          disabled: coldCount === 0, 
+                          extra: coldCount === 0 ? <span className="text-muted">[WAIT FOR COLD]</span> : null
+                        },
+                        { 
+                          id: 'MANUAL_COOL', 
+                          title: 'COOL_DOWN_ ', 
+                          target: coolTarget ? `[${coolTarget.id.replace(/_/g, ' ')}]` : '[NO_TARGET]',
+                          extra: <span className="text-cyan">[-15S | 5 STA]</span>,
+                          disabled: !coolTarget || state.stamina < 5, 
+                          cond: isUnlocked(state, 'manual_cool'),
+                          payload: { targetId: coolTarget?.instanceId },
+                          unlockId: 'manual_cool'
+                        },
+                        { 
+                          id: 'DARK_MARKET', 
+                          title: 'DARK_MARKET_ ', 
+                          target: dmUnlocked && dmBusy ? `[CD: ${fmtDuration(state.darkMarketCooldown)}]` : '', 
+                          disabled: dmDisabled, 
+                          cond: isUnlocked(state, 'dark_market'), 
+                          unlockId: 'dark_market',
+                          extra: !dmUnlocked 
+                            ? <span className="text-red">[LOCKED: LVL 4 + 50 REP]</span>
+                            : dmUnlocked && !dmBusy && state.inventory.length > 0 
+                              ? <span className="text-green">[+{Math.floor(state.inventory.reduce((sum, i) => sum + i.gold, 0) * 0.6).toLocaleString()} CR]</span>
+                              : dmUnlocked && !dmBusy && state.inventory.length === 0 
+                                ? <span className="text-muted">[NO ITEMS]</span>
+                                : null
+                        },
+                        { 
+                          id: 'BARTER', 
+                          title: 'BARTER_ ', 
+                          target: '[10X DATA_CHIP → +1 REP]', 
+                          disabled: barterDisabled, 
+                          cond: isUnlocked(state, 'barter'), 
+                          unlockId: 'barter',
+                          extra: (state.barterCooldown ?? 0) > 0 ? <span className="text-muted">[CD]</span> : null
+                        },
+                      ];
+
+                      return actionButtons.filter(btn => btn.cond !== false).map(btn => (
+                        <div 
+                          // KEY TRIK: Ak je to novo odomknuté, zmení sa key, React remountne element a spustí sa animácia
+                          key={btn.cond && isNewlyUnlocked(btn.unlockId) ? `new-${btn.id}` : btn.id} 
+                          className={cn(
+                            "flex-[1_1_calc(50%-6px)] min-h-[56px]", 
+                            btn.cond && isNewlyUnlocked(btn.unlockId) && 'unlock-reveal'
+                          )}
+                        >
+                          <ProtoBtn
+                            onClick={() => dispatchWithSound({ type: btn.id, ...(btn.payload || {}) })}
+                            disabled={btn.disabled}
+                            active={btn.active}
+                            className="w-full h-full flex flex-col items-start justify-center text-left m-0 py-8 px-10"
+                          >
+                            <div className="font-bold text-sm tracking-widest uppercase leading-relaxed overflow-wrap w-full">
+                              <span>{btn.title}</span>
+                              {btn.target && <span className={btn.targetColor || "text-amber"}>{btn.target}</span>}
+                            </div>
+                            
+                            {( (btn.chance !== null && btn.chance !== undefined) || btn.extra) && (
+                              <div className="w-full text-xs font-mono tracking-wider uppercase leading-tight mt-1">
+                                {btn.chance !== null && btn.chance !== undefined && (
+                                  <span className="text-cyan opacity-80 mr-2">[{btn.chance}%]</span>
+                                )}
+                                {btn.extra}
+                              </div>
+                            )}
+                          </ProtoBtn>
+                        </div>
+                      ));
+                    })()}
                   </div>
                 </div>
 
-                {/* ── SECTION 4: SYSTEM LOGS ── */}
+                {/* ── SECTION 4: SYSTEM LOGS ── 
                 <div className="system-log">
                   <div className="system-log-header">
                     <span className="text-md text-muted tracking-widest uppercase">:: SYSTEM_LOGS</span>
@@ -2536,7 +3201,7 @@ export default function App() {
                     </span>
                   </div>
 
-                  <div className="system-log-content">
+                  <div className="system-log-content" ref={logContentRef}>
                     {state.log.length === 0 ? (
                       <div className="text-center py-10 opacity-30 text-xs">
                         ... AWAITING_PROTOCOL ...
@@ -2549,7 +3214,11 @@ export default function App() {
                         else if (upper.includes('[BUSTED]') || upper.includes('RAID') || upper.includes('SEIZED') || upper.includes('LOSE')) colorClass = 'text-red';
                         else if (upper.includes('WARNING') || upper.includes('BOUNTY') || upper.includes('ABORTED')) colorClass = 'text-orange';
                         else if (upper.includes('SUCCESS') || upper.includes('CAPTURED') || upper.includes('SOLD') || upper.includes('RESTORED') || upper.includes('CLEARED')) colorClass = 'text-green';
-                        else if (upper.includes('LEVEL UP') || upper.includes('PROTOCOL') || upper.includes('RECOVERED')) colorClass = 'text-cyan';
+                        else if (upper.includes('LEVEL UP') || upper.includes('PROMOTION') || upper.includes('PROTOCOL') || upper.includes('RECOVERED')) colorClass = 'text-cyan';
+
+                        if (i === 0 && entry.includes('[ZERO >>]')) {
+                          return <ZeroLogEntry key={`z-${newestLogKey}`} text={entry} />;
+                        }
 
                         return (
                           <div
@@ -2569,176 +3238,26 @@ export default function App() {
                   </div>
                 </div>
               </div>
+            )} */}
+
+            {/* ── NOVÝ AGENCY ── */}
+            {activeTab === 'AGENCY' && isUnlocked(state, 'agency') && (
+              <AgencyTab state={state} dispatchWithSound={dispatchWithSound} />
             )}
 
-            {/* ── AGENCY TAB ── */}
+            {/* ── AGENCY TAB ── 
             {activeTab === 'AGENCY' && isUnlocked(state, 'agency') && (() => {
-              
-              const getHealCost = (agent) => {
-                const base = agent.role === 'streetRunner' ? 150 :
-                       agent.role === 'dataThief' ? 600 :
-                       agent.role === 'infiltrator' ? 2000 : 6000;
-                return Math.max(50, Math.floor(base * ((agent.fatigue || 0) / 100)));
-              };
-
-              const TRAIT_CONFIG = {
-                PARANOID: { color: 'var(--purple)', label: 'PARANOID' },
-                GREEDY:   { color: 'var(--gold)', label: 'GREEDY' },
-                LOYAL:    { color: 'var(--green)', label: 'LOYAL' },
-                UNSTABLE: { color: 'var(--orange)', label: 'UNSTABLE' },
-                CYNIC:    { color: 'var(--cyan)', label: 'CYNIC' },
-                IDEALIST: { color: 'var(--amber)', label: 'IDEALIST' },
-              };
-              
-              const AgentCard = ({ agent }) => {
-                const isPending = agent.spec === 'PENDING';
-                const isTraining = agent.status === 'TRAINING';
-                const isActive = agent.status === 'ACTIVE';
-                const isTired = agent.fatigue > 0;
-                const healCost = getHealCost(agent.fatigue);
-                const xpNeeded = (agent.level || 1) * 1000;
-                const xpPercent = ((agent.xp || 0) / xpNeeded) * 100;
-                
-                let statusColorClass = 'text-muted';
-                if (isActive) statusColorClass = 'text-green';
-                else if (isTraining) statusColorClass = 'text-purple';
-                else if (agent.status === 'ON_MISSION') statusColorClass = 'text-cyan';
-                else if (agent.status === 'EXHAUSTED' || agent.status === 'INJURED' || agent.status === 'CAPTURED') statusColorClass = 'text-red animate-pulse';
-              
-                return (
-                  <div className="card agent-card p-12 flex flex-col justify-between">
-                    <div>
-                      {/* ── HEADER ── */}
-                      <div className="flex-between items-start mb-8">
-                        <div className="overflow-hidden pr-8">
-                          <div 
-                            className={cn("text-lg font-bold tracking-wide", isPending ? "text-muted" : "text-white")}
-                            style={{ whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}
-                          >
-                            {agent.name}
-                          </div>
-                          <div className={cn("text-[10px] font-bold tracking-widest mt-1", statusColorClass)}>
-                            [{agent.status}]
-                          </div>
-                        </div>
-                        <div className="badge badge-amber font-bold flex-shrink-0">LVL {agent.level || 1}</div>
-                      </div>
-              
-                      {/* ── TRAITS ── */}
-                      {agent.traits && agent.traits.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mb-8">
-                          {agent.traits.map(trait => {
-                            const cfg = TRAIT_CONFIG[trait] || { color: 'var(--muted)', label: trait };
-                            return (
-                              <span 
-                                key={trait} 
-                                className="text-[8px] font-bold tracking-widest px-1 py-0.5 border"
-                                style={{ color: cfg.color, borderColor: cfg.color, backgroundColor: `${cfg.color}15` }}
-                              >
-                                {cfg.label}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-              
-                      {/* ── STATS ── */}
-                      {agent.stats && (
-                        <div className="flex justify-between items-center mb-10 pb-6 border-b border-surface-low text-[10px] font-mono tracking-widest text-muted">
-                          <div>STL: <span className="text-white">{agent.stats.stealth}</span></div>
-                          <div>SPD: <span className="text-white">{agent.stats.speed}</span></div>
-                          <div>INT: <span className="text-white">{agent.stats.intel}</span></div>
-                        </div>
-                      )}
-              
-                      {/* ── BARS ── */}
-                      <div className="mb-4">
-                        <div className="mb-6">
-                          <div className="flex-between text-[10px] tracking-wider mb-2">
-                            <span className={agent.fatigue > 70 ? 'text-red font-bold' : 'text-muted'}>FTG</span>
-                            <span className={agent.fatigue > 70 ? 'text-red' : 'text-muted'}>{agent.fatigue || 0} / 100</span>
-                          </div>
-                          <Bar pct={agent.fatigue || 0} variant={agent.fatigue > 70 ? "ftg" : "default"}/>
-                        </div>
-                        
-                        <div className="mb-6">
-                          <div className="flex-between text-[10px] tracking-wider mb-2">
-                            <span className="text-muted">XP</span>
-                            <span className="text-muted">{agent.xp || 0} / {xpNeeded}</span>
-                          </div>
-                          <Bar pct={xpPercent} variant="xp"/>
-                        </div>
-                      </div>
-                    </div>
-              
-                    {/* ── ACTIONS ── */}
-                    {!isPending ? (
-                      <div className="flex gap-4 mt-6 pt-6" style={{ borderTop: '1px solid var(--surface-low)' }}>
-                        {isTired && agent.status !== 'ON_MISSION' && agent.status !== 'CAPTURED' && (
-                          <button 
-                            onClick={() => dispatch({ type: 'HEAL_AGENT', agentId: agent.id })}
-                            disabled={state.gold < getHealCost(agent)}
-                            className={cn("btn btn-xs flex-1 text-center", state.gold >= getHealCost(agent) ? "btn-danger" : "btn-disabled")}
-                            style={{ margin: 0 }}
-                          >
-                            HEAL [{getHealCost(agent)}]
-                          </button>
-                        )}
-                        {isActive && !isTired && (
-                          <button 
-                            onClick={() => dispatch({ type: 'ASSIGN_TRAINING', agentId: agent.id })}
-                            className="btn btn-xs btn-purple flex-1 text-center"
-                            style={{ margin: 0 }}
-                          >
-                            TRAIN
-                          </button>
-                        )}
-                        {isTraining && (
-                          <button 
-                            onClick={() => dispatch({ type: 'STOP_TRAINING', agentId: agent.id })}
-                            className="btn btn-xs flex-1 text-center border-red text-red hover:bg-red/20"
-                            style={{ margin: 0 }}
-                          >
-                            HALT
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      // ── PENDING PROMOTION BUTTONS ──
-                      <div className="flex gap-4 mt-6 pt-6" style={{ borderTop: '1px solid var(--amber)' }}>
-                        <button 
-                          onClick={() => dispatch({ type: 'SET_RUNNER_SPEC', runnerType: agent.role, spec: 'GREEDY' })}
-                          className="btn btn-xs flex-1 text-center bg-amber text-bg hover:bg-gold"
-                          style={{ margin: 0, border: 'none' }}
-                        >
-                          [GREEDY] +50% CR
-                        </button>
-                        <button 
-                          onClick={() => dispatch({ type: 'SET_RUNNER_SPEC', runnerType: agent.role, spec: 'SHADOW' })}
-                          className="btn btn-xs flex-1 text-center bg-purple text-white hover:bg-purple-full"
-                          style={{ margin: 0, border: 'none' }}
-                        >
-                          [SHADOW] -50% HEAT
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              };
-
-              const traineesCount = state.agents?.filter(a => a.status === 'TRAINING').length || 0;
-
               return (
                 <div className="flex-1 p-16 overflow-y-auto scroll-none">
                   
-                  {/* HEADER & NEURAL SIM DASHBOARD */}
+                  {/* HEADER & NEURAL SIM DASHBOARD 
                   <div className="flex flex-wrap justify-between items-end gap-16 mb-24 pb-16 border-muted">
                     <div>
                       <div className="text-3xl font-bold text-amber tracking-widest">SYNDICATE_ROSTER</div>
                       <div className="text-md text-muted mt-4">Manage recruitment, training, and recovery.</div>
                     </div>
 
-                    {/* NEURAL SIM BANNER */}
+                    {/* NEURAL SIM BANNER 
                     <div className={cn(
                       "flex items-center gap-16 px-12 border", 
                       traineesCount > 0 ? "card-purple" : "card"
@@ -2749,12 +3268,12 @@ export default function App() {
                       </div>
                       <div className="text-right pl-16" style={{ borderLeft: '1px solid var(--surface-low)' }}>
                         <div className="text-sm text-muted">Drain Rate</div>
-                        <div className={cn("text-md font-bold", traineesCount > 0 ? "text-red" : "text-muted")}>-{traineesCount * 15} CR/t</div>
+                        <div className={cn("text-md font-bold", traineesCount > 0 ? "text-red" : "text-muted")}>-{traineesCount * 15} CR/s</div>
                       </div>
                     </div>
                   </div>
                   
-                  {/* RECRUITMENT TERMINAL */}
+                  {/* RECRUITMENT TERMINAL 
                   <div className="mb-32">
                     <div className="text-md text-muted tracking-widest uppercase mb-12">[ Recruitment_Network ]</div>
                     <div className="grid grid-auto gap-12">
@@ -2773,10 +3292,10 @@ export default function App() {
                           <button 
                             key={runner.id} 
                             disabled={!canAfford} 
-                            onClick={() => dispatch({ type: 'HIRE_RUNNER', runnerType: runner.id })} 
+                            onClick={() => dispatchWithSound({ type: 'HIRE_RUNNER', runnerType: runner.id })} 
                             className={cn(
                               "flex flex-col gap-6 p-12 text-left transition-all card", 
-                              isLocked ? "opacity-50" : canAfford ? "cursor-pointer hover:bg-surface-high" : "cursor-not-allowed"
+                              isLocked ? "opacity-80" : canAfford ? "cursor-pointer hover:bg-surface-high" : "cursor-not-allowed"
                             )}
                             style={{ border: canAfford ? '1px solid var(--amber)' : undefined }}
                           >
@@ -2794,19 +3313,27 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* ROSTER */}
+                  {/* ROSTER 
                   {(state.agents || []).length === 0 ? (
-                    <div className="p-32 text-center text-muted card border-dashed">No operatives found. Access the Recruitment Network above.</div>
+                    <div className="flex flex-col items-center justify-center h-64 text-center p-8">
+                      <div className="text-amber-muted text-xs tracking-widest mb-4 opacity-80">:: NO OPERATIVES ::</div>
+                      <div className="text-amber-muted text-[10px] italic">The city won't liberate itself.</div>
+                      <pre className="text-md text-amber-muted opacity-80 mt-4">
+{`  o
+  /|\\
+  / \\`}
+                      </pre>
+                    </div>
                   ) : (
                     <div className="flex flex-col gap-24">
                       {['streetRunner', 'dataThief', 'infiltrator', 'fixer'].map(roleType => {
-                        const roleAgents = state.agents.filter(a => a.role === roleType);
+                        const roleAgents = (state.agents || []).filter(a => a.role === roleType);
                         if (roleAgents.length === 0) return null;
                         return (
                           <div key={roleType}>
                             <div className="text-sm text-muted tracking-widest uppercase mb-12">[ {roleType}s ]</div>
                             <div className="grid grid-auto gap-12">
-                              {roleAgents.map(agent => <AgentCard key={agent.id} agent={agent} />)}
+                              {roleAgents.map(agent => <AgentCard key={agent.id} agent={agent} dispatch={dispatch} gold={state.gold} />)}
                             </div>
                           </div>
                         );
@@ -2815,32 +3342,48 @@ export default function App() {
                   )}
                 </div>
               );
-            })()}
+            })()} */}
 
-            {/* ── UPGRADES TAB ── */}
+            {/* ── NOVÝ UPGRADES ── */}
+            {activeTab === 'UPGRADES' && (
+              <UpgradesTab state={state} dispatchWithSound={dispatchWithSound} />
+            )}
+
+
+            {/* ── UPGRADES TAB ── 
             {activeTab === 'UPGRADES' && (
               <div className="flex-1 min-h-0 overflow-y-auto scroll-none">
                 
-                {/* CREDIT UPGRADES (Gold) */}
-                <div className="border-b border-amber mb-12">
-                  <span className="panel-header text-amber tracking-widest uppercase">
-                    :: OPERATIVE_UPGRADES [CR]
-                  </span>
-                </div>
-                
-                {UPGRADE_DEFS.map(def => (
-                  <UpgradeRow 
-                    key={def.key} 
-                    def={def} 
-                    level={state.upgrades[def.key] ?? 0} 
-                    gold={state.gold} 
-                    dispatch={dispatch} 
-                  />
+                {/* Definícia kategórií 
+                {[
+                  { key: 'COMBAT', label: 'COMBAT_PROTOCOLS', color: 'var(--red)', members: ['ghostProtocol', 'iceBreaker', 'signalDampener', 'traceEraser'] },
+                  { key: 'ECONOMY', label: 'ECONOMIC_PROTOCOLS', color: 'var(--amber)', members: ['darkChannel', 'autoFencer', 'aiSubroutine', 'xpBoost'] },
+                  { key: 'SURVIVAL', label: 'SURVIVAL_PROTOCOLS', color: 'var(--green)', members: ['neuralBoost', 'stimPack', 'safehouse', 'quantumEncryption', 'proxyServers'] },
+                  { key: 'NETWORK', label: 'NETWORK_PROTOCOLS', color: 'var(--cyan)', members: ['voidDrive', 'hwOverclock', 'runnerStealth'] },
+                ].map(cat => (
+                  <div key={cat.key} className="mb-16">
+                    <div className="panel-header font-bold tracking-widest mb-6 pb-2 border-b" style={{ color: cat.color, borderColor: cat.color }}>
+                      :: {cat.label}
+                    </div>
+                    
+                    {UPGRADE_DEFS
+                      .filter(def => cat.members.includes(def.key))
+                      .map(def => (
+                        <UpgradeRow 
+                          key={def.key} 
+                          def={def} 
+                          level={state.upgrades[def.key] ?? 0} 
+                          gold={state.gold} 
+                          dispatchWithSound={dispatchWithSound}
+                        />
+                    ))}
+                  </div>
                 ))}
 
-                {/* INTEL UPGRADES (Purple) */}
+                {/* INTEL UPGRADES (Purple) 
                 {isUnlocked(state, 'intel') && (
-                  <>
+                  // Pridané wrapper div s animáciou
+                  <div className={cn(isNewlyUnlocked('intel') && 'unlock-reveal')}>
                     <div className="border-b border-purple mt-10 mb-6">
                       <span className="panel-header text-purple tracking-widest uppercase">
                         :: INTEL_&_ASSETS [REP]
@@ -2862,8 +3405,8 @@ export default function App() {
                             borderLeft: `3px solid ${maxed ? 'var(--green)' : 'var(--purple)'}`
                           }}
                         >
-                          {/* Ľavá strana: Názov a Popis */}
-                          <div className="flex-1">
+                          {/* ... (vnútro zostáva rovnaké) ... 
+                           <div className="flex-1">
                             <div className="flex items-center gap-6">
                               <span className="font-bold text-md uppercase text-purple tracking-wider">
                                 {def.label}
@@ -2877,79 +3420,159 @@ export default function App() {
                             </div>
                           </div>
 
-                          {/* Pravá strana: Cena a Tlačidlo */}
                           {!maxed && (
                             <div className="flex items-center gap-12">
                               <span className={cn('font-black text-lg', canAfford ? 'text-purple' : 'text-red')}>
-                                {dynamicCost.toLocaleString()} <span className="text-xs opacity-50">REP</span>
+                                {dynamicCost.toLocaleString()} <span className="text-xs opacity-80">REP</span>
                               </span>
                               <BuyBtn
                                 canAfford={canAfford}
                                 maxed={false}
                                 label="ACQUIRE"
-                                onClick={() => dispatch({ type: 'BUY_INTEL_UPGRADE', key: def.key })}
+                                onClick={() => dispatchWithSound({ type: 'BUY_INTEL_UPGRADE', key: def.key })}
                               />
                             </div>
                           )}
                         </div>
                       );
                     })}
-                  </>
+                  </div>
                 )}
 
-                {/* HIRED RUNNERS (Green) */}
-                {isUnlocked(state, 'runners') && (
-                  <>
-                    <div className="border-b border-green mt-10 mb-6">
-                      <span className="panel-header text-green tracking-widest uppercase">
-                        :: HIRED_RUNNERS [ASSETS]
-                      </span>
-                    </div>
-
-                    <RunnerCard runnerType="streetRunner" label="STREET_RUNNER"
-                      count={(state.agents || []).filter(a => a.role === 'streetRunner').length} 
-                      agents={(state.agents || []).filter(a => a.role === 'streetRunner')}
-                      gold={state.gold} level={state.level} unlockLevel={3} requiresPrestige={0} prestige={state.prestige ?? 0}
-                      baseCost={300} cycleSeconds={srCycle} crPerRunner={2} heatPerRunner={1}
-                      cycleTotal={calculateCycleTotal('streetRunner')} dispatch={dispatch} setSpecModal={setSpecModal} />
-
-                    <RunnerCard runnerType="dataThief" label="DATA_THIEF"
-                      count={(state.agents || []).filter(a => a.role === 'dataThief').length} 
-                      agents={(state.agents || []).filter(a => a.role === 'dataThief')}
-                      gold={state.gold} level={state.level} unlockLevel={5} requiresPrestige={0} prestige={state.prestige ?? 0}
-                      baseCost={800} cycleSeconds={dtCycle} crPerRunner={8} heatPerRunner={2}
-                      cycleTotal={calculateCycleTotal('dataThief')} dispatch={dispatch} setSpecModal={setSpecModal} />
-
-                    <RunnerCard runnerType="infiltrator" label="INFILTRATOR"
-                      count={(state.agents || []).filter(a => a.role === 'infiltrator').length} 
-                      agents={(state.agents || []).filter(a => a.role === 'infiltrator')}
-                      gold={state.gold} level={state.level} unlockLevel={7} requiresPrestige={0} prestige={state.prestige ?? 0}
-                      baseCost={2500} cycleSeconds={ifCycle} crPerRunner={35} heatPerRunner={3}
-                      cycleTotal={calculateCycleTotal('infiltrator')} dispatch={dispatch} setSpecModal={setSpecModal} />
-
-                    <RunnerCard runnerType="fixer" label="FIXER"
-                      count={(state.agents || []).filter(a => a.role === 'fixer').length} 
-                      agents={(state.agents || []).filter(a => a.role === 'fixer')}
-                      gold={state.gold} level={state.level} unlockLevel={9} requiresPrestige={0} prestige={state.prestige ?? 0}
-                      baseCost={8000} cycleSeconds={fxCycle} crPerRunner={150} heatPerRunner={1}
-                      cycleTotal={calculateCycleTotal('fixer')} dispatch={dispatch} setSpecModal={setSpecModal} />
-
-                    <RunnerCard runnerType="shadowBroker" label="SHADOW_BROKER"
-                      count={(state.agents || []).filter(a => a.role === 'shadowBroker').length} 
-                      agents={(state.agents || []).filter(a => a.role === 'shadowBroker')}
-                      gold={state.gold} level={state.level} unlockLevel={1} requiresPrestige={1} prestige={state.prestige ?? 0}
-                      baseCost={25000} cycleSeconds={sbCycle} crPerRunner={600} heatPerRunner={0}
-                      cycleTotal={calculateCycleTotal('shadowBroker')} dispatch={dispatch} setSpecModal={setSpecModal} />
-                  </>
-                )}
               </div>
+            )} */}
+
+
+            {/* NOVÝ AWAKENING TAB */}
+            {activeTab === 'AWAKENING' && isUnlocked(state, 'mainframe') && (
+              <AwakeningTab state={state} dispatchWithSound={dispatchWithSound} />
             )}
 
-            {/* ── SETTINGS TAB ── */}
+
+            {/* AWAKENING TAB 
+            {activeTab === 'AWAKENING' && isUnlocked(state, 'mainframe') && (
+              <div className="awakening-container">
+                
+                {/* HEADER 
+                <div className="text-center mb-6">
+                  <div className="text-xs text-muted tracking-widest opacity-80">
+                    :: CYCLE_{String(state.prestige || 0).padStart(2,'0')} ::
+                  </div>
+                  <div 
+                    className="text-5xl font-black mt-2"
+                    style={{ color: 'var(--gold)', letterSpacing: '0.04em', textShadow: '0 0 30px rgba(255, 215, 0, 0.3)' }}
+                  >
+                    AWAKENING
+                  </div>
+                  <div className="text-sm text-muted mt-3 italic opacity-70">
+                    Shed the network. Reset the cycle. Retain dominion over the void.
+                  </div>
+                </div>
+
+                {/* PROGRESS BARS 
+                <div className="w-full">
+                  <Bar 
+                    label="LEVEL PROGRESS" 
+                    pct={(state.level / 10) * 100} 
+                    color="var(--purple)" 
+                  />
+                  <div className="h-4" />
+                  <Bar 
+                    label="YIELD PROGRESS" 
+                    pct={Math.min(100, ((state.runGoldEarned || 0) / 100000) * 100)} 
+                    color="var(--amber)" 
+                  />
+                </div>
+
+                {/* PRESTIGE BUTTON 
+                <div className="mt-4">
+                  <button
+                    disabled={!canPrestige}
+                    onClick={() => dispatchWithSound({ type: 'SHOW_PRESTIGE_MODAL' })}
+                    className={cn(
+                      "btn w-auto px-20 py-3 border-2 font-black text-lg",
+                      canPrestige ? "border-gold text-gold animate-pulse" : "opacity-40 cursor-not-allowed"
+                    )}
+                    style={{ 
+                      borderColor: 'var(--gold)', 
+                      color: 'var(--gold)', 
+                      textShadow: canPrestige ? '0 0 20px var(--gold)' : 'none',
+                      background: 'transparent'
+                    }}
+                  >
+                    ★ INITIATE AWAKENING ★
+                  </button>
+                  {!canPrestige && (
+                    <div className="text-center mt-2 text-xs text-red tracking-widest">
+                      REQUIREMENTS_UNMET :: CONTINUE_OPS
+                    </div>
+                  )}
+                </div>
+
+                {/* REWARDS PREVIEW 
+                <Panel title="AWAKENING_REWARDS" accent="var(--gold)" dense>
+                  <div className="grid grid-3 gap-2 mt-2">
+                    <div className="reward-cell">
+                      <div className="reward-cell-label">GOLD</div>
+                      <div className="reward-cell-value" style={{ color: 'var(--gold)' }}>
+                        +{Math.floor((state.runGoldEarned || 0) / 100000)}
+                      </div>
+                    </div>
+                    <div className="reward-cell">
+                      <div className="reward-cell-label">PRESTIGE</div>
+                      <div className="reward-cell-value" style={{ color: 'var(--purple)' }}>
+                        P{(state.prestige || 0) + 1}
+                      </div>
+                    </div>
+                    <div className="reward-cell">
+                      <div className="reward-cell-label">PERMAS</div>
+                      <div className="reward-cell-value" style={{ color: 'var(--cyan)' }}>
+                        +1 SLOT
+                      </div>
+                    </div>
+                  </div>
+                </Panel>
+
+              </div>
+            )} */}
+
+            {/* ── NOVÝ SETTINGS TAB ── */}
+            {activeTab === 'SETTINGS' && (
+              <SettingsTab state={state} dispatch={dispatch} />
+            )}
+
+
+            {/* ── SETTINGS TAB ── 
             {activeTab === 'SETTINGS' && (
               <div className="flex-1 min-h-0 overflow-y-auto scroll-none">
 
-                {/* ACHIEVEMENTS */}
+                {/* AUDIO SETTINGS 
+                <div className="card mb-10">
+                  <div className="text-sm font-bold mb-6">AUDIO_SETTINGS</div>
+                  <div className="flex-between mb-4">
+                    <span className="text-xs text-muted uppercase tracking-widest">MASTER VOLUME</span>
+                    <span className="text-xs text-amber">{Math.round(audioVolume * 100)}%</span>
+                  </div>
+                  <input
+                    type="range" min="0" max="1" step="0.05"
+                    value={audioVolume}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      setAudioVolume(v);
+                      audioManager.setVolume(v);
+                    }}
+                    style={{ width: '100%', accentColor: 'var(--amber)' }}
+                  />
+                  <button
+                    className="btn btn-xs mt-6"
+                    onClick={() => { audioManager.init(); audioManager.siphonSuccess(); }}
+                    style={{ margin: 0, width: 'auto' }}
+                  >
+                    TEST SOUND
+                  </button>
+                </div>
+
+                {/* ACHIEVEMENTS 
                 <span className="panel-header mb-8">ACHIEVEMENTS</span>
                 {ACHIEVEMENT_DEFS.map(def => {
                   const unlocked = !!((state.achievements ?? {})[def.id]);
@@ -2981,7 +3604,7 @@ export default function App() {
                   );
                 })}
 
-                {/* PRESTIGE PERK TREE */}
+                {/* PRESTIGE PERK TREE 
                 {(state.prestige ?? 0) >= 1 && (<>
                   <span className="panel-header mt-14 mb-4">PRESTIGE PERKS</span>
                   <div className="text-xs text-muted mb-6 tracking-wide">
@@ -3039,7 +3662,7 @@ export default function App() {
                                   <span className="text-xs text-muted">{lockMsg}</span>
                                 ) : (
                                   <button
-                                    onClick={() => canBuy && dispatch({ type: 'BUY_PRESTIGE_PERK', perkId: def.id })}
+                                    onClick={() => canBuy && dispatchWithSound({ type: 'BUY_PRESTIGE_PERK', perkId: def.id })}
                                     className="btn btn-xs"
                                     style={{ 
                                       width: 'auto', 
@@ -3062,7 +3685,7 @@ export default function App() {
                   })}
                 </>)}
 
-                {/* PRESTIGE */}
+                {/* PRESTIGE 
                 <div className="panel-header mb-8">PRESTIGE</div>
                 <div className="card-bordered border-amber/20 mb-16">
                   <div className={cn('flex items-center gap-6 text-md font-bold mb-8', canPrestige ? 'text-orange' : 'text-muted')}>
@@ -3077,16 +3700,18 @@ export default function App() {
                   </div>
                   
                   <div className="bg-surface-low p-8 mb-8 border border-surface-high text-sm font-mono">
-                    <div className="flex-between mb-4">
+                    <div className="flex-between mb-1">
                       <span className="text-amber">Level Status:</span>
                       <span className={state.level >= 10 ? 'text-green' : 'text-amber'}>{state.level}/10</span>
                     </div>
-                    <div className="flex-between">
+                    <Bar pct={(state.level / 10) * 100} variant="xp" />
+                    <div className="flex-between mb-1" style={{ marginTop: 10 }}>
                       <span className="text-amber">Run Yield:</span>
                       <span className={runGoldEarned >= 100000 ? 'text-green' : 'text-amber'}>
                         {runGoldEarned.toLocaleString()} / 100k CR
                       </span>
                     </div>
+                    <Bar pct={Math.min(100, (runGoldEarned / 100000) * 100)} variant="default" />
                   </div>
 
                   <div className="flex-between text-sm text-amber mb-12">
@@ -3095,27 +3720,28 @@ export default function App() {
                   </div>
 
                   <button
-                    disabled={!canPrestige}
-                    onClick={() => {
-                      dispatch({ type: 'SHOW_PRESTIGE_MODAL' });
-                    }}
-                    className={cn('btn w-full font-black text-center', canPrestige ? 'btn-amber animate-pulse' : 'btn-disabled')}
-                    style={canPrestige ? { borderColor: 'var(--orange)', color: 'var(--orange)' } : {}}
+                      disabled={!canPrestige}
+                      onClick={() => {
+                        audioManager.prestige(); // ZVUK: Prestižny zvuk (existujúci)
+                        dispatch({ type: 'SHOW_PRESTIGE_MODAL' });
+                      }}
+                      className={cn('btn w-full font-black text-center', canPrestige ? 'btn-amber animate-pulse' : 'btn-disabled')}
+                      style={canPrestige ? { borderColor: 'var(--orange)', color: 'var(--orange)' } : {}}
                   >
-                    {canPrestige 
-                      ? `PRESTIGE → RUN #${(state.prestige ?? 0) + 1} [x${(1 + ((state.prestige ?? 0) + 1) * 0.25).toFixed(2)}]` 
-                      : 'PRESTIGE [LOCKED]'}
+                      {canPrestige 
+                        ? `PRESTIGE → RUN #${(state.prestige ?? 0) + 1} [x${(1 + ((state.prestige ?? 0) + 1) * 0.25).toFixed(2)}]` 
+                        : 'PRESTIGE [LOCKED]'}
                   </button>
                 </div>
-                {/* SAVE */}
+                {/* SAVE 
                 <span className="panel-header mt-14 mb-8">SAVE_SYSTEM</span>
 
-                {/* Export */}
+                {/* Export 
                 <div className="card">
                   <div className="text-sm font-bold mb-6">EXPORT_SAVE</div>
                   <button
                     onClick={() => {
-                      try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch { /* quota */ }
+                      saveGame(state);
                       setExportString(exportSave(state));
                       setTimeout(() => exportRef.current?.select(), 50);
                     }}
@@ -3139,7 +3765,7 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Import */}
+                {/* Import 
                 <div className="card mt-4">
                   <div className="text-md font-bold mb-6">IMPORT_SAVE</div>
                   <textarea
@@ -3151,22 +3777,23 @@ export default function App() {
                   />
                   {importError && <div className="text-sm text-red mb-6">{importError}</div>}
                   <button
-                    onClick={() => {
-                      const parsed = importSave(importInput.trim());
-                      if (!parsed) { setImportError('INVALID SAVE DATA'); return; }
-                      const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
-                      dispatch({ type: 'LOAD_SAVE', payload: parsed, ts });
-                      setImportInput('');
-                      setImportError('');
-                      setExportString('');
-                    }}
-                    className="btn"
+                      onClick={() => {
+                        const parsed = importSave(importInput.trim());
+                        if (!parsed) { setImportError('INVALID SAVE DATA'); return; }
+                        const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+                        audioManager.dataLoad(); // ZVUK: Načítanie dát
+                        dispatch({ type: 'LOAD_SAVE', payload: parsed, ts });
+                        setImportInput('');
+                        setImportError('');
+                        setExportString('');
+                      }}
+                      className="btn"
                   >
-                    LOAD SAVE
+                      LOAD SAVE
                   </button>
                 </div>
 
-                {/* Hard reset */}
+                {/* Hard reset 
                 <div className="card mt-4">
                   <div className="text-md font-bold mb-6 text-red">RESET_ALL</div>
                   <div className="text-sm text-muted mb-8">Wipes all progress. Cannot be undone.</div>
@@ -3178,146 +3805,44 @@ export default function App() {
                     <div className="flex gap-6">
                       <button 
                         onClick={() => {
+                          audioManager.hardReset();
                           localStorage.removeItem(SAVE_KEY);
+                          localStorage.removeItem('sg_booted');
+                          localStorage.removeItem('sg_intro');
+                          localStorage.removeItem('sg_first_done');
+                          localStorage.setItem('sg_reset_tab', 'OPERATIONS');
                           dispatch({ type: 'HARD_RESET' });
-                          setResetConfirm(false);
-                          setExportString('');
+                          window.location.reload();
                         }} 
                         className="btn btn-danger flex-1 text-center"
                         style={{ background: 'var(--red)', color: '#fff' }}
                       >
                         CONFIRM
                       </button>
-                      <button onClick={() => setResetConfirm(false)} className="btn flex-1 text-center">
+                      <button 
+                        onClick={() => {
+                            audioManager.abort(); // ZVUK: Zrušenie
+                            setResetConfirm(false);
+                        }} 
+                        className="btn flex-1 text-center"
+                      >
                         CANCEL
                       </button>
                     </div>
                   )}
                 </div>
               </div>
-            )}
+            )} */}
           </div>
           )}
 
-          {/* ── RIGHT COL: INVENTORY ── */}
+          {/* ── NOVÝ INVENTORY ── */}
           {(!isMobile || mobileTab === 'DASH') && (
-            <div 
-              className={cn("game-col-right", isMobile && "w-full h-auto overflow-visible p-8 border-t border-surface-high mt-8")} 
-              style={!isMobile ? { width: '320px', height: '100%', overflowY: 'auto' } : {}}
-            >
-              <div className={!isMobile ? "bg-transparent" : ""}>
-                
-                {state.inventory.some(i => i.isQuantum) && (
-                  <div className="text-md font-bold bg-transparent tracking-widest text-gold mb-10 p-3 border border-gold text-center animate-pulse">
-                    :: QUANTUM CORE DETECTED ::
-                  </div>
-                )}
+            <InventoryPanel state={state} dispatchWithSound={dispatchWithSound} />
+          )}
 
-                <div className="flex items-center justify-between mb-12 border-b border-surface-high pb-4">
-                  <span className="text-sm font-bold text-amber tracking-widest uppercase">
-                    :: INVENTORY <span className={invFull ? "text-red animate-pulse" : "text-muted"}>[{state.inventory.length}/{maxInventory}]</span>
-                  </span>
-                  
-                  {state.inventory.length > 0 && (
-                    <button 
-                      onClick={() => setInventorySort(m => {
-                        const idx = SORT_MODES.indexOf(m);
-                        return SORT_MODES[(idx + 1) % SORT_MODES.length];
-                      })}
-                      className="btn btn-xs"
-                      style={{ margin: 0, width: 'auto' }}
-                    >
-                      SORT: [{inventorySort}]
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex flex-col gap-4">
-                  {sortedInventory.map(item => {
-                    // RARITY PODĽA SKUTOČNEJ HODNOTY (už s district multiplikátorom a prefixami)
-                    const actualGold = item.gold;
-                    const isQuantum = item.isQuantum || item.id.includes('QUANTUM_');
-                    
-                    let rarityColor = 'var(--amber)'; // default COMMON
-                    
-                    if (isQuantum || actualGold >= 500) {
-                      rarityColor = 'var(--gold)';
-                    } else if (actualGold >= 200) {
-                      rarityColor = 'var(--gold)';
-                    } else if (actualGold >= 100) {
-                      rarityColor = 'var(--purple)';
-                    } else if (actualGold >= 50) {
-                      rarityColor = 'var(--cyan)';
-                    } else if (actualGold >= 20) {
-                      rarityColor = 'var(--cyan)';
-                    } else {
-                      rarityColor = 'var(--amber)';
-                    }
-                    
-                    // Prefix detection pre špeciálne efekty
-                    const hasMilitary = item.id.includes('MILITARY_');
-                    const hasQuantumPrefix = item.id.includes('QUANTUM_');
-                    const hasCorrupted = item.id.includes('CORRUPTED_');
-                    
-                    const baseItemId = item.id.replace(/^(MILITARY|QUANTUM|CORRUPTED)_/, '');
-                    const coolPct = item.isHot && item.cooldown
-                      ? Math.max(0, Math.min(100, (1 - item.cooldownRemaining / item.cooldown) * 100))
-                      : 100;
-
-                    return (
-                      <div 
-                        key={item.instanceId} 
-                        className="bg-bg border p-8 relative overflow-hidden"
-                        style={{ borderColor: rarityColor, borderLeftWidth: '4px' }}
-                      >
-                        {/* Prefix badge */}
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[11px] font-bold tracking-widest uppercase" style={{ color: rarityColor }}>
-                              {item.id}
-                            </span>
-                            {hasMilitary && <span className="text-[8px] px-1 bg-green/20 text-green border border-green-full">MIL</span>}
-                            {hasQuantumPrefix && <span className="text-[8px] px-1 bg-gold/20 text-gold border border-gold-full">QNT</span>}
-                            {hasCorrupted && <span className="text-[8px] px-1 bg-red/20 text-red border border-red-full">CRPT</span>}
-                          </div>
-                          <Icon component={Cpu} size={11} color={item.isHot ? 'var(--orange)' : 'var(--green)'} style={{ marginTop: 2 }} />
-                        </div>
-                        
-                        {ITEM_FLAVOR[baseItemId] && (
-                          <div className="text-[9px] text-muted mb-6 italic opacity-60">
-                            "{ITEM_FLAVOR[baseItemId]}"
-                          </div>
-                        )}
-                        
-                        <div className="flex justify-between items-center mt-2">
-                          <span className="text-[11px] font-black text-amber">
-                            {item.gold} <span className="text-[9px] opacity-50">CR</span>
-                          </span>
-                          <span className={cn("text-[10px] font-bold tracking-widest", item.isHot ? "text-orange animate-pulse" : "text-green opacity-70")}>
-                            {item.isHot ? fmtCooldown(item.cooldownRemaining) : 'COLD'}
-                          </span>
-                        </div>
-                        
-                        {/* Progress bar pre hot items */}
-                        {item.isHot && (
-                          <div className="w-full h-1 bg-surface-low mt-4">
-                            <div 
-                              className="h-full transition-all duration-1000" 
-                              style={{ 
-                                width: `${coolPct}%`, 
-                                background: 'linear-gradient(90deg, var(--amber) 0%, var(--red) 100%)',
-                                boxShadow: '0 0 5px var(--orange)'
-                              }} 
-                            />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-               {/* ── MISSION COMPLETE SPLASH SCREEN ── */}
-              {state.missionSplash && createPortal(
+          {/* ── MISSION COMPLETE SPLASH SCREEN ── */}
+          {state.missionSplash && createPortal(
                 <div style={{
                   position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.85)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)',
@@ -3346,14 +3871,17 @@ export default function App() {
                     </div>
 
                     <button 
-                      onClick={() => dispatch({ type: 'CLEAR_SPLASH' })}
-                      style={{ 
-                        width: '100%', padding: '14px', background: 'transparent', 
-                        border: '1px solid #22c55e', color: '#22c55e', 
-                        fontSize: 12, fontWeight: 700, letterSpacing: '0.2rem', cursor: 'pointer' 
-                      }}
+                        onClick={() => {
+                            audioManager.siphonSuccess(); // ZVUK: Úspešná akcia
+                            dispatch({ type: 'CLEAR_SPLASH' });
+                        }}
+                        style={{ 
+                          width: '100%', padding: '14px', background: 'transparent', 
+                          border: '1px solid #22c55e', color: '#22c55e', 
+                          fontSize: 12, fontWeight: 700, letterSpacing: '0.2rem', cursor: 'pointer' 
+                        }}
                     >
-                      [ ACKNOWLEDGE ]
+                        [ ACKNOWLEDGE ]
                     </button>
                   </div>
                 </div>,
@@ -3369,17 +3897,62 @@ export default function App() {
                     </div>
                     <div className="text-md text-muted mb-20 leading-relaxed">
                       No operator input registered. <br/>
-                      Entering Power-Saving Mode in <span className="text-red font-bold">
-                        {Math.max(0, Math.round(((state.idlePromptTimestamp + (DEV_MODE ? 10000 : 60000)) - Date.now()) / 1000))}s
+                      Entering Power-Saving Mode in{" "}
+                      <span className="text-red font-bold">
+                        {state.idlePromptTimestamp 
+                          ? Math.max(0, Math.round(((state.idlePromptTimestamp + (DEV_MODE ? 10000 : 60000)) - Date.now()) / 1000)) 
+                          : 0}
+                        {" "}s
                       </span>.<br/>
                       Hostile operations will be paused. Output reduced to 60%.
                     </div>
                     <button 
-                      onClick={() => dispatch({ type: 'USER_ACTIVE' })} 
+                      onClick={() => {
+                          audioManager.systemWakeup(); // ZVUK: Prebudenie
+                          dispatch({ type: 'USER_ACTIVE' });
+                      }} 
                       className="btn btn-danger-center w-full text-center"
                     >
                       [ OVERRIDE: I AM HERE ]
                     </button>
+                  </div>
+                </div>,
+                document.body
+              )}
+
+              {/* ── HIBERNÁCIA (Stmavenie po AFK) ── */}
+              {state.isIdle && createPortal(
+                <div 
+                  className="idle-hibernation-overlay"
+                  onClick={() => {
+                      audioManager.systemWakeup();
+                      dispatch({ type: 'USER_ACTIVE' });
+                  }}
+                >
+                  <div className="glitch-text mb-20" data-text=":: SYSTEM_HIBERNATED ::">
+                    :: SYSTEM_HIBERNATED ::
+                  </div>
+                  
+                  {/* NOVÉ: Zobrazenie stavu počas idle */}
+                  <div className="text-md text-amber text-center max-w-sm mb-10 font-bold">
+                    DORMANT_CREDITS: {state.gold.toLocaleString()} CR
+                  </div>
+
+                  <div className="text-md text-muted text-center max-w-sm mb-30">
+                    Neural link suspended. Hostile operations <span className="text-red font-bold">PAUSED</span>.<br/>
+                    Production output reduced to <span className="text-red font-bold">60%</span>.
+                  </div>
+                  
+                  {/* NOVÉ: Ak je Neural Sim aktívny, ukáž varovanie */}
+                  {traineesCount > 0 && (
+                      <div className="text-sm text-red text-center max-w-sm mb-20 border border-red p-2">
+                        WARNING: Neural Sim DRAIN ACTIVE<br/>
+                        -{traineesCount * 15} CR/t
+                      </div>
+                  )}
+
+                  <div className="text-xs text-muted uppercase tracking-widest animate-pulse border border-muted-full p-10 px-20">
+                    [ Click to re-establish neural link ]
                   </div>
                 </div>,
                 document.body
@@ -3411,7 +3984,7 @@ export default function App() {
                       </div>
 
                       <button 
-                        onClick={() => dispatch({ type: 'EXECUTE_LAST_STAND', hexId: lastStandNodeId })}
+                        onClick={() => dispatchWithSound({ type: 'EXECUTE_LAST_STAND', hexId: lastStandNodeId })}
                         className="w-full py-16 bg-red text-black text-base font-black tracking-wider border-none cursor-pointer transition-transform active:scale-[0.98]"
                       >
                         [ INITIATE EMERGENCY OVERRIDE ]
@@ -3446,28 +4019,155 @@ export default function App() {
                     </div>
                     
                     <button 
-                      onClick={() => {
-                        dispatch({ type: 'PRESTIGE' });
-                        dispatch({ type: 'HIDE_PRESTIGE_MODAL' });
-                      }} 
-                      className="btn btn-danger w-full mb-8 font-black tracking-widest text-center"
+                        onClick={() => {
+                            dispatchWithSound({ type: 'PRESTIGE' }); // Tu už máš zvuk v dispatchWithSound cez 'prestige()'
+                            dispatch({ type: 'HIDE_PRESTIGE_MODAL' });
+                        }} 
+                        className="btn btn-danger w-full mb-8 font-black tracking-widest text-center"
                     >
-                      [ INITIATE {(state.prestige || 0) === 0 ? 'FIRST' : ''} AWAKENING ]
+                        [ INITIATE {(state.prestige || 0) === 0 ? 'FIRST' : ''} AWAKENING ]
                     </button>
                     
                     <button 
-                      onClick={() => dispatch({ type: 'HIDE_PRESTIGE_MODAL' })} 
-                      className="btn w-full font-bold text-center border-muted text-muted hover:text-white"
+                        onClick={() => {
+                            audioManager.abort(); // ZVUK: Zrušenie
+                            dispatch({ type: 'HIDE_PRESTIGE_MODAL' });
+                        }} 
+                        className="btn w-full font-bold text-center border-muted text-muted hover:text-white"
                     >
-                      [ ABORT SEQUENCE ]
+                        [ ABORT SEQUENCE ]
                     </button>
                   </div>
                 </div>,
                 document.body
               )}
-						</div>
-					</div>
-					)}
+
+          {/* ── RIGHT COL: INVENTORY ── 
+          {(!isMobile || mobileTab === 'DASH') && (
+            <div 
+              className={cn("game-col-right", isMobile && "w-full h-auto overflow-visible p-8 border-t border-surface-high mt-8")} 
+              style={!isMobile ? { width: '320px', height: '100%', overflowY: 'auto' } : {}}
+            >
+              <div className={!isMobile ? "bg-transparent" : ""}>
+                
+                {state.inventory.some(i => i.isQuantum) && (
+                  <div className="text-md font-bold bg-transparent tracking-widest text-gold mt-10 mb-2 p-3 border border-gold text-center animate-pulse">
+                    :: QUANTUM CORE DETECTED ::
+                  </div>
+                )}
+
+                {/* HLAVIČKA INVENTORY - VŽDY VIDITEĽNÁ 
+                <div className="flex items-center justify-between mb-12 border-b border-surface-high pb-4 pt-2">
+                  <span className="text-sm font-bold text-amber tracking-widest uppercase">
+                    :: INVENTORY <span className={invFull ? "text-red animate-pulse" : "text-muted"}>[{state.inventory.length}/{maxInventory}]</span>
+                  </span>
+                  
+                  {/* SORT BUTTON - Vertikálne vycentrovaný 
+                  {state.inventory.length > 0 && (
+                    <button 
+                      onClick={() => {
+                        if (window.audioManager?.tab) window.audioManager.tab();
+                        setInventorySort(m => {
+                          const idx = SORT_MODES.indexOf(m);
+                          return SORT_MODES[(idx + 1) % SORT_MODES.length];
+                        });
+                      }}
+                      className="btn btn-xs"
+                      style={{ margin: 0, width: 'auto', alignSelf: 'center' }} /* alignSelf pre istotu 
+                    >
+                      SORT: [{inventorySort}]
+                    </button>
+                  )}
+                </div>
+
+                {/* OBSAH INVENTORY - PRÁZDNA ALEBO PLNÁ 
+                {state.inventory.length === 0 ? (
+                  <div className="empty-state text-center py-20">
+                    <div className="empty-state-ascii font-mono text-xs text-amber mb-6">
+{`
+  ┌──────────┐
+  │  ░░░░░░  │
+  │  ░ ○░ ░  │
+  │  ░░░░░░  │
+  └──────────┘
+`}
+                  </div>
+                  <div className="text-xs tracking-widest opacity-80">:: AWAITING_EXTRACTION ::</div>
+                  <div className="text-sm opacity-80 mt-4">Begin siphoning to acquire data.</div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {sortedInventory.map(item => {
+                    const actualGold = item.gold;
+                    const isQuantum = item.isQuantum || item.id.includes('QUANTUM_');
+                    
+                    let rarityColor = 'var(--amber)';
+                    
+                    if (isQuantum || actualGold >= 500) {
+                      rarityColor = 'var(--gold)';
+                    } else if (actualGold >= 200) {
+                      rarityColor = 'var(--gold)';
+                    } else if (actualGold >= 100) {
+                      rarityColor = 'var(--purple)';
+                    } else if (actualGold >= 50) {
+                      rarityColor = 'var(--cyan)';
+                    } else if (actualGold >= 20) {
+                      rarityColor = 'var(--cyan)';
+                    } else {
+                      rarityColor = 'var(--amber)';
+                    }
+                    
+                    const hasMilitary = item.id.includes('MILITARY_');
+                    const hasQuantumPrefix = item.id.includes('QUANTUM_');
+                    const hasCorrupted = item.id.includes('CORRUPTED_');
+                    
+                    const baseItemId = item.id.replace(/^(MILITARY|QUANTUM|CORRUPTED)_/, '');
+                    const coolPct = item.isHot && item.cooldown
+                      ? Math.max(0, Math.min(100, (1 - item.cooldownRemaining / item.cooldown) * 100))
+                      : 100;
+
+                    return (
+                      <div 
+                        key={item.instanceId} 
+                        className="bg-bg border p-8 relative overflow-hidden"
+                        style={{ borderColor: rarityColor, borderLeftWidth: '4px' }}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[11px] font-bold tracking-widest uppercase" style={{ color: rarityColor }}>
+                              {item.id}
+                            </span>
+                            {hasMilitary && <span className="text-xs px-1 bg-green/20 text-green border border-green-full">MIL</span>}
+                            {hasQuantumPrefix && <span className="text-xs px-1 bg-gold/20 text-gold border border-gold-full">QNT</span>}
+                            {hasCorrupted && <span className="text-xs px-1 bg-red/20 text-red border border-red-full">CRPT</span>}
+                          </div>
+                          <Icon component={Cpu} size={11} color={item.isHot ? 'var(--orange)' : 'var(--green)'} style={{ marginTop: 2 }} />
+                        </div>
+                        
+                        {ITEM_FLAVOR[baseItemId] && (
+                          <div className="text-[9px] text-amber-muted mb-6 italic opacity-60">
+                            "{ITEM_FLAVOR[baseItemId]}"
+                          </div>
+                        )}
+                        
+                        <div className="flex justify-between items-center mt-2">
+                          <span className="text-sm font-black text-amber">
+                            {item.gold} <span className="text-sm opacity-80">CR</span>
+                          </span>
+                          <span className={cn("text-[10px] font-bold tracking-widest", item.isHot ? "text-orange animate-pulse" : "text-green opacity-70")}>
+                            {item.isHot ? fmtCooldown(item.cooldownRemaining) : 'COLD'}
+                          </span>
+                        </div>
+                        
+                        {item.isHot && <Bar pct={coolPct} variant="ftg"/>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )} 
+
+              */}
+
         </div>
       </div>
     </div>

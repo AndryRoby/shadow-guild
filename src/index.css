@@ -122,6 +122,40 @@ body {
   box-sizing: border-box;
 }
 
+/* Mobile Floating HUD */
+.mobile-hud {
+  position: fixed;
+  top: 50px; /* Pod headerom */
+  right: 8px;
+  background: rgba(5, 5, 5, 0.85);
+  border: 1px solid var(--amber);
+  padding: 4px 8px;
+  font-size: 10px;
+  z-index: 100;
+  display: none; /* Defaultne skryté */
+  backdrop-filter: blur(4px);
+}
+
+@media (max-width: 767px) {
+  .mobile-hud {
+    display: flex;
+    gap: 8px;
+  }
+}
+
+/* ── UNLOCK REVEAL ───────────────────────────────────────────────────────────── */
+
+@keyframes unlockReveal {
+  0%   { opacity: 0; transform: translateY(-12px) scale(0.95); filter: brightness(3) blur(2px); }
+  40%  { opacity: 1; transform: translateY(2px) scale(1.02);   filter: brightness(1.5); }
+  100% { opacity: 1; transform: translateY(0) scale(1);        filter: brightness(1); }
+}
+
+.unlock-reveal {
+  animation: unlockReveal 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity, filter;
+}
+
 /* ============ UTILITIES ============ */
 .flex { display: flex; }
 .flex-col { display: flex; flex-direction: column; }
@@ -157,6 +191,8 @@ body {
 .border-green-full { border: 1px solid var(--green); }
 .border-red-full { border: 1px solid var(--red); }
 .border-gold-full { border: 1px solid var(--gold); }
+
+.bg-red { background: #ff2244}
 
 /* ============ SPACING ============ */
 .p-0 { padding: 0; }
@@ -378,6 +414,7 @@ body {
   box-shadow: 0 0 14px rgba(255, 193, 116, 0.45);
 }
 
+
 .btn-disabled {
   opacity: 0.35;
   cursor: not-allowed;
@@ -387,6 +424,11 @@ body {
 .btn-active {
   background: var(--amber);
   color: var(--bg);
+}
+
+.btn:hover *,
+.btn-active * {
+  color: inherit !important;
 }
 
 .btn-danger {
@@ -412,6 +454,10 @@ body {
   color: #ff2244;
   cursor: pointer;
   box-shadow: none;
+  text-align: center;
+  justify-content: center;
+  display: flex;
+  align-items: center;
 }
 
 .btn-override-active {
@@ -420,6 +466,10 @@ body {
   color: #000 !important;
   box-shadow: 0 0 15px rgba(255, 34, 68, 0.4) !important;
   animation: overridePulse 1.2s ease-in-out infinite;
+  text-align: center;
+  justify-content: center;
+  display: flex;
+  align-items: center;
 }
 
 .btn-override-disabled {
@@ -430,6 +480,7 @@ body {
 .btn-override:hover:not(:disabled):not(.btn-override-active) {
   background: rgba(255, 34, 68, 0.1);
   border-color: #ff2244;
+  color: #ff2244;
   box-shadow: 0 0 10px rgba(255, 34, 68, 0.3);
 }
 
@@ -467,6 +518,11 @@ body {
   border: 1px solid rgba(255, 68, 68, 0.5);
   color: #ff4444;
   animation: warningPulse 1.2s ease-in-out infinite;
+}
+
+.btn-maintain:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.15);
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.3);
 }
 
 .btn-maintain:disabled {
@@ -520,6 +576,27 @@ body {
   gap: 4px;
 }
 
+.btn-sort {
+  display: block;
+  width: 100%;
+  background: var(--surface-high);
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.1rem;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.08s;
+}
+
+.btn-sort:hover {
+  background: var(--amber);
+  color: var(--bg);
+  box-shadow: 0 0 14px rgba(255, 193, 116, 0.45);
+}
+
 /* Tab */
 .tab {
   flex: 1;
@@ -538,6 +615,11 @@ body {
   background: var(--amber);
   color: var(--bg);
   font-weight: 700;
+}
+
+.tab:hover:not(.tab-active):not(:disabled) {
+  color: var(--amber);
+  opacity: 0.8;
 }
 
 /* Stat Row */
@@ -587,7 +669,7 @@ body {
 }
 
 .bar-fill-amber {
-  background: var(--amber);
+  background: linear-gradient(90deg, var(--amber-dark) 0%, var(--amber) 100%);
   box-shadow: 0 0 15px var(--amber);
 }
 
@@ -618,7 +700,7 @@ body {
 
 /* XP Glitch Animation Container */
 .bar-fill-xp {
-  background: var(--purple);
+  background: linear-gradient(90deg, var(--purple) 0%, var(--gold) 100%);
   box-shadow: 0 0 15px var(--purple);
   position: relative;
   overflow: hidden;
@@ -796,6 +878,11 @@ body {
   margin-bottom: 16px;
   font-family: monospace;
   box-shadow: 0 0 15px rgba(255, 34, 68, 0.4);
+  position: relative; /* Zmenené z fixed/sticky na relative */
+  top: auto;
+  left: auto;
+  right: auto;
+  width: 100%;
 }
 
 /* Bandwidth panel */
@@ -844,6 +931,11 @@ body {
   background: rgba(0, 0, 0, 0.6);
 }
 
+.proto-btn:hover:not(:disabled) {
+  box-shadow: 0 0 8px currentColor;
+  opacity: 0.9;
+}
+
 /* Target briefing */
 .target-briefing {
   background: var(--surface-high);
@@ -884,35 +976,61 @@ body {
   animation: goldPulse 1.2s ease infinite;
 }
 
+.combo-glow-low  { box-shadow: 0 0 8px rgba(255, 193, 116, 0.5); }
+.combo-glow-high { box-shadow: 0 0 16px rgba(255, 215, 0, 0.6); border: 1px solid var(--gold); }
+.combo-glow-max  { animation: goldPulse 0.8s ease infinite; border: 1px solid var(--gold); }
+
 /* System log */
 .system-log {
-  flex: 1;
-  min-height: 350px;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--surface-high);
-  overflow: hidden;
+	flex: 1;
+	min-height: 350px;
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--surface-high);
+	overflow: hidden; /* Základný kontajner nesmie pretiecť */
 }
 
 .system-log-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  background: var(--surface-high);
-  border-bottom: 1px solid var(--muted);
-  flex-shrink: 0;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 8px 12px;
+	background: var(--surface-high);
+	border-bottom: 1px solid var(--muted);
+	flex-shrink: 0;
 }
 
 .system-log-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+	overflow-y: auto;
+	overflow-x: hidden;
+	scroll-behavior: smooth;
+	padding: 10px 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	
+	/* --- IZOLÁCIA SCROLLU --- */
+	overscroll-behavior: contain; /* Zabraňuje scrollu celej stránky pri dosiahnutí konca logu */
+	-webkit-overflow-scrolling: touch; /* Hladký scroll na iOS */
 }
 
+/* --- VIZUÁL SCROLLBARU (Aby bol vidno, ale nerušil) --- */
+.system-log-content::-webkit-scrollbar {
+	width: 4px;
+}
+
+.system-log-content::-webkit-scrollbar-track {
+	background: var(--bg);
+}
+
+.system-log-content::-webkit-scrollbar-thumb {
+	background: var(--surface-high);
+	border-radius: 2px;
+}
+
+.system-log-content::-webkit-scrollbar-thumb:hover {
+	background: var(--amber);
+}
 /* ============ OVERLAYS ============ */
 .overlay-root {
   position: fixed;
@@ -922,15 +1040,22 @@ body {
 }
 
 .overlay-float {
-  position: absolute;
-  top: 36%;
-  left: 74%;
+  position: fixed;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%); /* Dokonalé vycentrovanie */
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
   font-size: 14px;
   letter-spacing: 0.06rem;
   white-space: nowrap;
   animation: floatUp 1.5s ease forwards;
+}
+
+.overlay-float-crit {
+  animation: floatUp 2.5s ease forwards;
+  filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.6));
+  font-size: 1.8rem; /* Väčšie */
 }
 
 .modal-root {
@@ -1108,6 +1233,33 @@ body {
   align-items: center;
   justify-content: center;
   backdrop-filter: blur(2px);
+}
+
+/* Hibernácia - stmavenie po vypršaní limitu */
+.idle-hibernation-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20000; /* Dajme to úplne navrch */
+  background: rgba(0, 0, 0, 0.95);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--red);
+  pointer-events: auto; /* DÔLEŽITÉ */
+  user-select: none;    /* Hráč nebude označovať text */
+}
+
+.idle-hibernation-overlay * {
+  cursor: pointer;
+}
+
+.idle-hibernation-overlay .glitch-text {
+	font-size: 1.5rem;
+	letter-spacing: 0.5rem;
+	text-transform: uppercase;
+	font-weight: 900;
+	margin-bottom: 1rem;
 }
 
 /* Mission splash */
@@ -1316,4 +1468,466 @@ body {
     overflow-y: visible;  /* Žiadny vlastný scroll */
     position: static;
   }
+}
+
+/* ── INTRO SCREEN ────────────────────────────────────────────────────────────── */
+
+.intro-screen-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 48px;
+  max-width: 520px;
+  text-align: center;
+}
+
+.intro-line {
+  font-size: 15px;
+  letter-spacing: 0.05rem;
+  line-height: 1.6;
+  color: var(--amber);
+  animation: typeIn 0.8s ease forwards; /* Pomalšia animácia pre dramatickosť */
+}
+
+/* Tlačidlo na začatie hry */
+.btn-intro {
+  margin-top: 24px;
+  background: transparent;
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  letter-spacing: 0.15rem;
+  padding: 10px 32px;
+  cursor: pointer;
+  align-self: center;
+  transition: all 0.3s ease;
+  animation: fadeIn 1.5s ease forwards;
+}
+
+.btn-intro:hover {
+  background: var(--amber);
+  color: var(--bg);
+  box-shadow: 0 0 15px rgba(255, 193, 116, 0.4);
+}
+
+/* ── BOOT SCREEN ─────────────────────────────────────────────────────────────── */
+
+@keyframes bootFadeOut {
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.boot-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #050505;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 0 0 10vw;
+}
+
+.boot-screen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  pointer-events: none;
+}
+
+.boot-screen-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 480px;
+}
+
+.boot-line {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  letter-spacing: 0.12rem;
+  color: var(--amber);
+  text-align: left;
+}
+
+.boot-line.zero {
+  color: #88ffaa;
+}
+
+.boot-line.hidden {
+  visibility: hidden;
+}
+
+.boot-begin-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 32px;
+  max-width: 480px;
+}
+
+.boot-begin-btn {
+  background: transparent;
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  letter-spacing: 0.15rem;
+  padding: 10px 40px;
+  cursor: pointer;
+}
+
+.boot-begin-btn.hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.boot-intro-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+}
+
+
+/* ═══════════════════════════════════════════════════
+   BRUTALIST PRIMITIVES & DASHBOARD
+   ═══════════════════════════════════════════════════ */
+
+/* ── PANEL ── */
+.b-panel {
+  background: var(--surface-high);
+  border-left: 4px solid var(--amber);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  position: relative;
+}
+.b-panel-dense { padding: 10px 12px; margin-bottom: 8px; }
+
+.b-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.b-panel-title {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--amber);
+  font-weight: 600;
+}
+.b-panel-title::before {
+  content: ':: ';
+  opacity: 0.7;
+}
+
+/* ── ROW (Stat) ── */
+.b-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1px dashed rgba(255, 193, 116, 0.05);
+}
+
+.b-row-label {
+  font-size: 10px;
+  color: var(--amber);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.b-row-value {
+  font-size: 12px;
+  color: var(--amber);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Row bez spodnej čiary */
+.b-row-clean {
+  border-bottom: none;
+}
+
+/* ── TAG (Badge) ── */
+.b-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--amber);
+  background: transparent;
+  color: var(--amber);
+  padding: 2px 6px;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.b-tag-filled {
+  background: var(--amber);
+  color: #000;
+}
+
+/* Big Bar (For Awakening/Progress) */
+.b-big-bar {
+  height: 14px;
+  background: var(--bg);
+  border: 1px solid rgba(255, 193, 116, 0.2);
+  position: relative; /* Dôležité pre tick position */
+  overflow: hidden;
+  margin-top: 6px;
+}
+.b-big-bar-fill {
+  height: 100%;
+  transition: width 500ms ease;
+}
+.b-big-bar-ticks {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+.b-big-bar-tick {
+  position: absolute; /* Toto umožní 'left' v JSX */
+  width: 1px;
+  height: 100%;
+  background: rgba(0,0,0,0.6);
+}
+
+/* ── VITALS BLOCK (Credits/Gold) ── */
+/* JEDINÁ DEFINÍCIA - Konsolidované */
+.vitals-block {
+  border-left: 3px solid var(--amber);
+  padding: 8px 0 8px 12px; /* 8px vertikálne, 12px vľavo */
+  margin-bottom: 16px; /* Medzera pod blokom */
+}
+.vitals-label {
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  margin-bottom: 4px; /* Medzera pod labelom */
+}
+.vitals-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.vitals-unit {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.2em;
+  font-weight: 400;
+}
+
+/* ── MINI STAT (Grid Items) ── */
+.mini-stat {
+  background: var(--bg);
+  padding: 6px 4px;
+  text-align: center;
+  border: 1px solid rgba(255, 193, 116, 0.08);
+}
+.mini-stat-label {
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.mini-stat-value {
+  font-weight: 800;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.mini-stat-unit {
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.12em;
+}
+
+/* ── FLOW RATES ── */
+/* Flow Rates Panel specific - Kompaktné riadky */
+.flow-rates .b-row {
+  border-bottom-color: transparent; /* Bez čiary */
+  padding: 2px 0; /* Menší vertikálny priestor */
+  margin-bottom: 0;
+}
+
+/* ── DASHBOARD SIDEBAR ── */
+.dashboard-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── LOGO HEADER ── */
+.dash-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.dash-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: var(--amber);
+}
+.dash-version {
+  font-size: 8px;
+  color: var(--muted);
+  letter-spacing: 0.12em;
+}
+.dash-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.dash-status-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+}
+
+/* ── OPERATIVE ID CARD ── */
+.op-id-card {
+  background: var(--bg);
+  border: 1px solid rgba(255, 193, 116, 0.2);
+  padding: 12px;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 16px;
+  width: 100%;
+  /* Odstránené height: 100% a flex - necháme obsah riadiť výšku */
+  box-sizing: border-box;
+}
+
+
+.op-id-pattern {
+  position: absolute;
+  inset: 0;
+  opacity: 0.08;
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--amber) 0,
+    var(--amber) 1px,
+    transparent 1px,
+    transparent 6px
+  );
+  pointer-events: none;
+}
+
+.op-id-label {
+  font-size: 8px;
+  color: var(--muted);
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+}
+
+.op-id-value {
+  font-size: 56px; /* Zmenené z 56px na 42px */
+  line-height: 1;
+  font-weight: 800;
+  color: var(--amber);
+  letter-spacing: -0.02em;
+  margin-top: 2px;
+  margin-bottom: 4px;
+  text-shadow: 0 0 18px rgba(255, 193, 116, 0.3);
+  font-variant-numeric: tabular-nums;
+}
+
+.op-id-row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 8px; /* Zmenené z 9px na 8px */
+  letter-spacing: 0.15em; /* Zmenené z 0.2em na 0.15em */
+  text-transform: uppercase;
+}
+
+/* Pre mobilné zobrazenie */
+@media (max-width: 768px) {
+  .op-id-value {
+    font-size: 32px;
+  }
+  .op-id-row {
+    font-size: 7px;
+    letter-spacing: 0.1em;
+  }
+}
+
+/* ── EMPTY STATE ── */
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--muted);
+  padding: 20px;
+  gap: 14px;
+}
+.empty-state-ascii {
+  font-size: 10px;
+  opacity: 0.35;
+  line-height: 1.2;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: pre;
+}
+
+/* ── AWAKENING CONTAINER ── */
+.awakening-container {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  align-items: center;
+  padding: 10px 0;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+/* ── REWARD CELL ── */
+.reward-cell {
+  padding: 10px;
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  text-align: center;
+}
+.reward-cell-label {
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.2em;
+}
+.reward-cell-value {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  margin-top: 3px;
+}
+
+/* ── FLOAT TEXT ── */
+.float-text {
+  position: absolute;
+  font-weight: 800;
+  font-size: 14px;
+  pointer-events: none;
+  letter-spacing: 0.08em;
+  animation: pop 900ms cubic-bezier(.2,.9,.2,1) both;
+  z-index: 100;
+}
+@keyframes pop {
+  0% { transform: translateY(0) scale(1); opacity: 1 }
+  100% { transform: translateY(-60px) scale(1.4); opacity: 0 }
 }
