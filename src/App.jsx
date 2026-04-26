@@ -1673,18 +1673,17 @@ const sbCycle = DEV_MODE ? 30 : 7200;
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, loadInitialState());
-  const [appPhase, setAppPhase] = useState(() => {
-    const booted = localStorage.getItem('sg_booted');
-    const intro  = localStorage.getItem('sg_intro');
-    const done   = localStorage.getItem('sg_first_done');
-    if (!booted) return 'BOOT';
-    if (!intro || !done) return 'INTRO';
-    return 'GAME';
-  });
-  const [showBoot, setShowBoot] = useState(() => {
-    try { return localStorage.getItem('sg_boot_seen') !== '1'; }
-    catch { return false; }
-  });
+
+	const [appPhase, setAppPhase] = useState(() => {
+		const booted = localStorage.getItem('sg_booted');
+		const intro  = localStorage.getItem('sg_intro');
+		const done   = localStorage.getItem('sg_first_done');
+
+		if (!booted) return 'BOOT';
+		if (!intro || !done) return 'INTRO';
+		return 'GAME';
+	});
+
   const [activeTab, setActiveTab] = useState(() => {
     const resetTab = localStorage.getItem('sg_reset_tab');
     if (resetTab) { localStorage.removeItem('sg_reset_tab'); return resetTab; }
@@ -2392,16 +2391,24 @@ export default function App() {
   // 5. MAIN RETURN (Layout Grid)
   // ==========================================
 
-  if (appPhase === 'BOOT') return <BootSequence onComplete={() => {
-    localStorage.setItem('sg_booted', '1');
-    setAppPhase('INTRO');
-  }} />;
+  if (appPhase === 'BOOT') {
+		return (
+			<BootSequence onComplete={() => {
+				localStorage.setItem('sg_booted', '1');
+				setAppPhase('INTRO');
+			}} />
+		);
+	}
 
-  if (appPhase === 'INTRO') return <ZeroIntroScreen onComplete={() => {
-    localStorage.setItem('sg_intro', '1');
-    localStorage.setItem('sg_first_done', '1');
-    setAppPhase('GAME');
-  }} />;
+	if (appPhase === 'INTRO') {
+		return (
+			<ZeroIntroScreen onComplete={() => {
+				localStorage.setItem('sg_intro', '1');
+				localStorage.setItem('sg_first_done', '1');
+				setAppPhase('GAME');
+			}} />
+		);
+	}
 
   return (
     <div
@@ -4344,8 +4351,6 @@ export default function App() {
         {state.heat >= 80 && (
           <div className={`heat-vignette ${state.heat >= 95 ? 'critical' : ''}`} />
         )}
-
-        {showBoot && <BootSequence onComplete={() => setShowBoot(false)} />}
 
         {state.zeroLastMessage
           && state.zeroLastMessage.level === 'critical'
