@@ -152,21 +152,12 @@ Nie si zlodej. Si posledný Awakened v meste kde každý krok monitoruje THE EYE
 # 🟡 FÁZA 2: UI ARCHITECTURE (Týždeň 6-7)
 
 > Chirurgické zásahy. Nie celý redesign.
-
-## 2A: Dashboard Rework
-
-| Stav | ID | Feature | Implementácia |
-|------|----|---------|--------------|
-| [UX] | L2.1 | **Sticky stat bar** | Nahradiť 260px ľavý stĺpec. Nový element pod `game-header`: `position: sticky, top: headerHeight, height: 48px, width: 100%, z-index: 10`. Obsah: `◈ {gold} CR · ◆ {rep} REP · ▲ LVL {level} · ⚡ {sta}/{maxSta} · 🔥 {heat}%`. Farba heat metriky = `heatColor`. |
-| [UX] | L2.2 | **Collapsible detail panel** | Kliknúť na stat bar → slide-down (200px, transition 300ms) s: XP bar, Grid Status (bandwidth), Runner summary, Overclock toggle. State: `statBarExpanded: false`. Klávesová skratka: `Space` keď nie je iný focus. |
-| [ ] | L2.3 | **Grid update** | Odstrániť ľavý stĺpec z `game-grid`. Nový grid: `grid-template-columns: 1fr 320px`. Sticky stat bar nad gridom (full width). |
-
 ## 2B: Upgrades Reorganizácia
 
 | Stav | ID | Feature | Implementácia |
 |------|----|---------|--------------|
-| [UX] | L2.4 | **4 kategórie** | Rozdeliť `UPGRADE_DEFS` do skupín: `COMBAT: ['ghostProtocol', 'iceBreaker', 'signalDampener', 'traceEraser']` / `ECONOMY: ['darkChannel', 'autoFencer', 'aiSubroutine']` / `SURVIVAL: ['neuralBoost', 'stimPack', 'safehouse', 'quantumEncryption', 'proxyServers']` / `NETWORK: ['voidDrive', 'hwOverclock', 'xpBoost', 'runnerStealth']`. Každá kategória: farebný header, collapsible, ikona. |
-| [UX] | L2.5 | **Data-primary v upgrade rowoch** | Cena upgradu = najväčší element. Ak `canAfford`: zelená cena. Ak nie: červená. Label (názov upgradu) = medium. Effect text = small muted italic. |
+| [x] | L2.4 | **4 kategórie** | Rozdeliť `UPGRADE_DEFS` do skupín: `COMBAT: ['ghostProtocol', 'iceBreaker', 'signalDampener', 'traceEraser']` / `ECONOMY: ['darkChannel', 'autoFencer', 'aiSubroutine']` / `SURVIVAL: ['neuralBoost', 'stimPack', 'safehouse', 'quantumEncryption', 'proxyServers']` / `NETWORK: ['voidDrive', 'hwOverclock', 'xpBoost', 'runnerStealth']`. Každá kategória: farebný header, collapsible, ikona. |
+| [x] | L2.5 | **Data-primary v upgrade rowoch** | Cena upgradu = najväčší element. Ak `canAfford`: zelená cena. Ak nie: červená. Label (názov upgradu) = medium. Effect text = small muted italic. |
 
 ## 2C: Agency Compact
 
@@ -233,6 +224,18 @@ Nie si zlodej. Si posledný Awakened v meste kde každý krok monitoruje THE EYE
 | [ ] | H4.2 | **Hot zone mechaniika** | V `tick()`: ak `districtHeat[d] > 80` na viac ako 10 tickov consecutively: `state.hotZones[d] = true`. Hot zone efekt: +15% heat gen pri akciách v tej zóne. Vizuál: district button dostane červenú pulse animáciu. Vymaže sa pri prestige. |
 | [ ] | H4.3 | **Heat sink nodes** | Existujúce node effectHooks rozšíriť: typ `heat_decay_district` s `value` (decay rate per tick pre lokálny heat). Strategická voľba: ECONOMIC node vs HEAT SINK node. |
 | [ ] | H4.4 | **THE EYE response** | Globálny heat > 90 na 120s+ → "SYSTEM ALERT" event. Log: "THE EYE has flagged your signature as priority." → Hunter spawn accelerated, next raid v 60s namiesto random. |
+
+
+Roadmap aktualizácia
+Môžeš pridať do ROADMAP_FINAL:
+FÁZA 10+ (vizuálna revolúcia — po launch):
+
+Node-based network topology SVG (nahrádza text district list)
+Holographic blueprint panels pre agents/upgrades
+Data flow particles medzi nodmi
+Chromatic aberration pri critical heat
+Audio visualizer heat meter
+Zoom transitions pri entering nodes
 
 ## 4B: Hunter System
 
@@ -435,3 +438,258 @@ NGU Idle nemá Zera. Kittens Game nemá Zera. Ty máš narátora s osobnosťou, 
 
 **3. Itch.io first, Steam second**
 Po Fáze 3 (Syndicate Manager) máš dosť na itch.io launch. Zisti čo hráčov baví pred tým, než zaplatíš Steam fee. Komunita ti povie kde je "aha!" moment — ak ho nevie nájsť, vieš čo treba zmeniť.
+
+
+
+A. ONBOARDING — pravidlo 6-9 minút (kritické)
+A1. Progresívne UI reveal (skryť všetko okrem 1 nodu + SIPHON)
+
+Status: čiastočne máš (isUnlocked gating), ale Sidebar/tabs už ukazujú lock placeholders
+Fix: prvé 3-4 kliky → iba SIPHON button, žiadne taby, žiadny inventory, žiadny log
+Po 5. kliku → log appearne s animáciou ("BOOTING TERMINAL...")
+Po 1. capture → tab AGENCY pop-in (snapIn animácia)
+Logika: nie level-gating, ale action-count gating pre prvých 10 min
+
+A2. North Star vizuál
+
+AETHERIA_SPIRE (z CITY_MAP) zobraziť ako distant red dot v Sidebar od začiatku
+Tag: :: TARGET_LOCKED // PRESTIGE_3 REQ
+Vždy visible → hráč hneď chápe endgame cieľ
+Pulzuje červeno → motivácia
+
+A3. First-time tutorial overlay
+
+Nie text wall. Diegetic (cez ZERO dialog, ktorý už máš)
+Krok 1: "[ZERO >>] siphon any node. start small."
+Krok 2 (po prvom siphone): "[ZERO >>] good. now hold. they're not watching... yet."
+Krok 3 (po 5. siphone): "[ZERO >>] heat rising. lay low or run."
+Každý krok = 1-line v existujúcom log, žiadny modal
+
+A4. Pacing checklist — first 15 min
+
+0-2 min: Solo siphon, tutorial
+2-4 min: Heat appearuje, LAY_LOW unlock
+4-6 min: First level → AGENCY tab snapIn
+6-9 min: First agent hire → UPGRADES tab snapIn
+9-12 min: First raid → urgency moment
+12-15 min: NETWORK tab → district choice
+→ každých 3 min nová mechanika alebo escalation
+
+
+B. JUICE — feel-good vrstva (Balatro/COD reload model)
+B1. Klikový feedback ladder
+
+Siphon: paket flight zo stred-screen do inventáre + sound + heat tick visual
+Combo build-up: screen edge brightening (subtle, pri combo 5+)
+Combo 10+: gold border pulse (už máš animáciu, len wire it up)
+Combo break: shatter (máš animáciu, len trigger)
+
+B2. Number popper hierarchy
+
+Small gain (<10 CR): tiny float, default
+Medium (10-100): bigger, with + prefix
+Large (100-1000): screen-shake mild + sound
+Crit/legendary (1000+): screen-flash gold + bigger font + pause 200ms
+→ existujúci FloatText komponent, len rozšíriť
+
+B3. Failure feedback
+
+Bust: chromatic aberration burst + red vignette + low-freq rumble sound
+Miss (siphon fail): subtle horizontal jitter na button
+Heat critical: everything glitches subtly (každých 2s 100ms shift)
+
+B4. Idle return reward
+
+Hráč sa vráti po 30 min → "WELCOME BACK" splash s breakdown
+Big number reveal animation (count-up od 0 do total)
+Idle was earning → particle stream visualization
+
+
+C. STRATEGIC DEPTH — choice nad churn
+C1. "Pick 2 of 3" pri každom prestige tier
+
+P3, P5, P10 — vyber 1 z 3 mutually-exclusive top perkov
+Forces identity (nie len "buy everything eventually")
+Replayability cez build diversity
+Scope: 9 nových perkov total (3×3), v gameLogic + modal sekcia
+
+C2. Build presets / saved loadouts
+
+Save current perk allocation as named preset
+Load on prestige → instant respec na uloženú config
+Top 3 community presets (later: shareable codes)
+
+C3. Risk tier per district (rozšírenie current systému)
+
+Máš SAFE/BALANCED/AGGRESSIVE per mission
+Rozšíriť na per-action: SIPHON má 3 modes
+
+QUICK (1× heat, 1× yield, 100% success)
+DEEP (3× heat, 5× yield, 70% success)
+GHOST (0.5× heat, 0.7× yield, 95% success, costs 2× stamina)
+
+
+
+C4. Trade-off perky (z user research "vyber 2 z 3")
+
+Príklad: NEURAL_SURGE — "+50% siphon yield, but combo timer ÷2"
+MARKET_CRASH — "items sell ×3, but max 5 inventory slots"
+GREY_MAN — "0 heat from siphons, but rep gains ÷2"
+→ Každý perk je decision, nie linear power up
+
+
+D. CONTENT — late-game / endgame
+D1. Echo Files (z roadmapu C5.10) — flavor + meta
+
+Drop z mainframe hacks
+Fragmenty ZERO loru (text snippets)
+Conspiracy Board UI: collect → build picture
+No mechanical reward per file → lore reward = motivation
+Final reveal pri všetkých 30+ files = secret prestige tier
+
+D2. Anomaly events (P5.10)
+
+Random rare event mid-run
+"[!] ANOMALY DETECTED // node X behaving strangely"
+60s window → over-yield ×10 OR debuff if ignored
+Adds RNG urgency, breaks pacing monotony
+
+D3. Hunter named encounters expansion
+
+Máš named hunter system, expand:
+5-7 unique hunters s personalities (cez log dialogy)
+Each = different mechanic (Stalker = passive heat increase, Smasher = bust on touch, Whisper = cloaked until reveal)
+Boss-fight feel pre solo hru
+
+D4. Faction reputation (mid-game depth)
+
+Z CITY_MAP máš factions: GID, OMNIGUARD, ZERO, PLAYER
+Add: GHOSTS, BROKERS, NEONHEADS (3 neutral factions)
+Actions affect faction rep → unlock faction-specific perks/items
+Mutually exclusive (rep with GHOSTS = enemy with BROKERS)
+
+
+E. VISUAL POLISH (cheap wins, podľa direktívy)
+E1. Heat → chromatic aberration ramp
+
+80%: subtle (1px shift)
+90%: visible
+95%: aggressive + glitch frames
+→ CSS-only, ~20 LOC
+
+E2. Hex flicker v detail panels
+
+Random hex strings flicker ako "live data feed"
+Ambient detail, nie distraction
+~15 LOC
+
+E3. Audio-visualizer heat meter (sine wave)
+
+Replace existing heat bar
+Low heat = smooth sine green
+High heat = jagged red
+~40 LOC SVG
+
+E4. Siphon paket flight
+
+Click siphon → glowing dot animuje od node icon do inventory icon
+Stream pri auto-clicker
+~50 LOC
+
+E5. Boot sequence (post-launch screen)
+
+Hard reset / first boot → terminal text scroll
+"[BOOT] kernel v6.4.1 loaded..."
+"[OK] neural link established..."
+3-5s, skipovateľné cez click
+Sets tone immediately
+
+E6. Tab transition zoom
+
+Switch tab → micro zoom (scale 0.98 → 1.0, 120ms)
+Subtle but feels "tactile"
+~5 LOC CSS
+
+
+F. QoL (priorita 2 z roadmapu, expand)
+F1. Bulk buy ×1/×10/×MAX
+
+Already on roadmap
+
+F2. Recent gains tooltip (CR hover)
+
+Last 60s breakdown, top 5 sources
+
+F3. Perk impact tooltip
+
+Hover before buy → "this changes: +10% siphon, +0.2 stam/s"
+Concrete numbers nie abstract
+
+F4. Active recommendation engine
+
+"[ZERO >>] suggested: buy SIPHON_RATE upgrade. 4.2× more efficient than alternatives."
+Subtle, dismissable
+Uses simple ROI calc per upgrade
+
+F5. Notification settings
+
+Toggle pre raid alerts, busted, milestone toasts
+Expert mode: turn off all → silent run
+
+F6. Quick-action floating button
+
+Bottom-right corner
+Most-used action contextual (SIPHON during action, EXTRACT_COOLED when inventory full, LAY_LOW when heat high)
+Mobile-friendly future-proofing
+
+
+G. STEAM-LAUNCH PREP (z Click&Conquer learnings)
+G1. First-15-min replay testing protocol
+
+Hard reset, play 15 min, screenshot every 60s
+Annotate: was anything new revealed? Was player rewarded?
+Iterate until zero "dead minute"
+
+G2. Wishlist conversion mechanics
+
+Demo/free version v8 = first prestige
+Full = unlimited prestiges + late game
+Or: completely free, ad-free, donation model
+
+G3. Marketing assets ready
+
+30s gameplay loop video (no narration)
+10× screenshot s overlay text "ESCAPE THE GRID" / "BUILD THE NETWORK" / "BECOME THE EYE"
+Steam capsule needs to communicate "dark, smart, terminal"
+
+
+PRIORITY MATRIX
+BucketEffortImpactWhenA1-A3 onboardingMHIGHNowA4 pacing auditLHIGHNow (just play it)B1-B4 juiceMHIGHNextC1 pick-2-of-3HMMidC2 presetsMMMidC3-C4 trade-offMHIGHMidD1-D4 contentHMPost-MVPE1-E6 polishL eachMAnytimeF1-F6 QoLMMMidG prepLHIGHPre-launch
+
+
+NAVRHOVANÉ DALŠIE 3 KROKY
+1. Cheap wins batch (1 cycle, ~30 min)
+
+E1 chromatic aberration
+E2 hex flicker
+E5 boot sequence
+E6 tab zoom
+
+2. Onboarding rework (1 cycle, ~1h)
+
+A1 action-count gating (prvých 5 min)
+A2 north star v sidebar
+A3 ZERO tutorial dialogy do log
+
+3. Strategic depth (1 cycle, ~1h)
+
+C4 trade-off perky (3-4 nové, replace boring %)
+F3 perk impact tooltip
+
+Po týchto 3 cykloch máš:
+
+First-15-min sticky onboarding
+Visceral feedback
+Reason to replay
+
+→ Potom môžeme robiť visual revolution (NetworkTab redesign).

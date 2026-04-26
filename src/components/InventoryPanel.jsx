@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { Cpu } from 'lucide-react';
-
+import { audioManager } from '../audio/AudioManager.js';
 import { Panel, Tag, DataBar, BBtn, fmt, COLORS } from '../design/primitives.jsx';
 import { ITEM_FLAVOR } from '../gameLogic.js';
 
@@ -95,7 +95,10 @@ export function InventoryPanel({ state, dispatchWithSound }) {
             {SORT_MODES.map(mode => (
               <button
                 key={mode}
-                onClick={() => setSort(mode)}
+                onClick={() => {
+                  setSort(mode);
+                  audioManager.tab(); // Pridaný správny UI zvuk
+                }}
                 style={{
                   flex: 1,
                   background: sort === mode ? COLORS.amber : 'transparent',
@@ -179,15 +182,29 @@ function EmptyState() {
       gap: 14,
       padding: 20,
     }}>
-      <pre style={{ fontSize: 10, opacity: 0.35, lineHeight: 1.2, fontFamily: 'inherit', margin: 0 }}>
-{String.raw`
-  ┌──────────┐
-  │  ░░░░░░  │
-  │  ░ ○░ ░  │
-  │  ░░░░░░  │
-  └──────────┘
-`}
-      </pre>
+      <svg width="80" height="80" viewBox="0 0 80 80" style={{ opacity: 0.35 }}>
+        {/* HUD-style empty container icon — hexagon with dashed fill */}
+        <polygon
+          points="40,6 68,22 68,54 40,70 12,54 12,22"
+          stroke={COLORS.amberDim}
+          strokeWidth="1"
+          strokeDasharray="3 3"
+          fill="none"
+        />
+        <polygon
+          points="40,20 56,30 56,50 40,60 24,50 24,30"
+          stroke={COLORS.amberDim}
+          strokeWidth="1"
+          fill="none"
+          opacity="0.5"
+        />
+        {/* Scan pulse */}
+        <circle cx="40" cy="40" r="4" fill={COLORS.amberDim} opacity="0.4">
+          <animate attributeName="r" values="4;14;4" dur="2.5s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.6;0;0.6" dur="2.5s" repeatCount="indefinite"/>
+        </circle>
+        <circle cx="40" cy="40" r="2" fill={COLORS.amber} opacity="0.8"/>
+      </svg>
       <div style={{ fontSize: 10, letterSpacing: '0.25em' }}>:: AWAITING_EXTRACTION ::</div>
       <div style={{ fontSize: 9, opacity: 0.5, letterSpacing: '0.15em' }}>
         Begin siphoning to acquire data.
@@ -213,9 +230,9 @@ function InvRow({ item, onSell }) {
   const hasQuantum = item.id.includes('QUANTUM_');
   const hasCorrupted = item.id.includes('CORRUPTED_');
 
-  // Legendary scanline overlay
+  // Legendary: subtle solid tint (not scanlines)
   const legendaryBg = isLegendary
-    ? `repeating-linear-gradient(0deg, transparent 0 2px, rgba(255,215,0,0.08) 2px 3px)`
+    ? 'linear-gradient(135deg, rgba(255,215,0,0.06) 0%, transparent 60%)'
     : 'none';
 
   return (

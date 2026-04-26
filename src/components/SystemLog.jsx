@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Panel, Tag, COLORS } from '../design/primitives.jsx';
 import { getLogTierColor } from '../selectors.js';
+import { audioManager } from '../audio/AudioManager.js';
 
 // ─── Detect tier from log string content ─────────────────────────────────
 function detectTier(entry) {
@@ -27,8 +28,7 @@ function detectTier(entry) {
    || upper.includes('ALERT')
    || upper.includes('[!]')) return 'warning';
 
-  if (upper.includes('LEVEL UP')
-   || upper.includes('UNLOCK')
+  if (upper.includes('UNLOCK')
    || upper.includes('ACHIEVEMENT')
    || upper.includes('CAPTURED')
    || upper.includes('SOLD')
@@ -37,6 +37,7 @@ function detectTier(entry) {
    || upper.includes('SUCCESS')) return 'success';
 
   if (upper.includes('PROTOCOL')
+   || upper.includes('LEVEL')
    || upper.includes('RECOVERED')) return 'info';
 
   return 'normal';
@@ -48,6 +49,39 @@ export function SystemLog({ state }) {
   const contentRef = useRef(null);
   const prevLengthRef = useRef(log.length);
   const [newestKey, setNewestKey] = useState(0);
+
+  // ─── ZVUKOVÝ WATCHER (Event-driven audio pre logy) ───
+  useEffect(() => {
+    // Ak sa dĺžka nezmenila (alebo log je prázdny), nerob nič
+    if (log.length === 0 || log.length <= prevLengthRef.current) return;
+
+    // Analyzuj len úplne poslednú pridanú správu
+    const lastEntry = log[0]; // Všimni si, že renderuješ "log.slice(0, 40)", čiže log[0] je najnovší (ak to máš reversnuté)
+    
+    // UPOZORNENIE PRE TEBA: Ak tvoj reducer ukladá nové logy na KONIEC poľa (push), 
+    // zmeň log[0] na log[log.length - 1]. 
+    // Ale podľa tvojho map() v renderi usudzujem, že index 0 je isNewest, takže nové správy sú na začiatku.
+
+    const tier = detectTier(lastEntry);
+
+    switch (tier) {
+      case 'success':
+        audioManager.upgrade(); 
+        break;
+      case 'fail':
+        // audioManager.fail(); 
+        break;
+      case 'warning':
+        // audioManager.warning(); 
+        break;
+      case 'zero':
+        // audioManager.zeroLine(); // Toto môžeš zapnúť, ak nemáš zvuk už v komponente <ZeroEntry>
+        break;
+      default:
+        // 'normal' a 'info' sú ticho
+        break;
+    }
+  }, [log]); // Spustí sa vždy, keď sa pole 'log' zmení
 
   // Bump key when new entry arrives → triggers typewriter for ZERO messages
   useEffect(() => {
@@ -126,22 +160,32 @@ export function SystemLog({ state }) {
             &gt; awaiting_input...
           </div>
         ) : (
-          log.slice(0, 40).map((entry, i) => (
-            <LogEntry
-              key={i === 0 ? `new-${newestKey}` : i}
-              entry={entry}
-              index={i}
-              isNewest={i === 0}
-            />
-          ))
+          log.slice(0, 40).map((entry, i) => {
+            const text = typeof entry === 'string' ? entry : (entry?.text ?? '');
+            const live = i === 0 && (state.comboCount ?? 0) >= 2 && isLiveBatch(text);
+            return (
+              <LogEntry
+                key={i === 0 ? `new-${newestKey}` : i}
+                entry={entry}
+                index={i}
+                isNewest={i === 0}
+                isLive={live}
+              />
+            );
+          })
         )}
       </div>
     </Panel>
   );
 }
 
+// Detect if entry is a batched siphon-like action ("✓ SIPHON x4", "!! BREACH x2")
+function isLiveBatch(text) {
+  return /^\[\d+:\d+\]\s+[✓!]+\s+(SIPHON|BREACH|DEEP_SIPHON|MAINFRAME)\s+x\d+/.test(text);
+}
+
 // ─── Log entry — handles 3 visual tiers ───────────────────────────────────
-function LogEntry({ entry, index, isNewest }) {
+function LogEntry({ entry, index, isNewest, isLive }) {
   const text = typeof entry === 'string' ? entry : (entry?.text ?? '');
   const tier = detectTier(entry);
 
@@ -177,7 +221,7 @@ function LogEntry({ entry, index, isNewest }) {
             : tier === 'info' ? COLORS.cyan
             : COLORS.amber;
 
-  return (
+    return (
     <div
       className={isNewest ? 'snap-in' : ''}
       style={{
@@ -186,6 +230,14 @@ function LogEntry({ entry, index, isNewest }) {
         opacity,
         padding: '1px 0',
         letterSpacing: '0.02em',
+
+        ...(isLive ? {
+          background: `${COLORS.amber}11`,
+          boxShadow: `inset 0 0 0 1px ${COLORS.amber}55, 0 0 12px ${COLORS.amber}22`,
+          animation: 'comboGlowPulse 600ms ease-in-out infinite',
+          paddingLeft: 6,
+          marginLeft: -6,
+        } : {}),
       }}
     >
       {text}

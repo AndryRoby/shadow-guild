@@ -2,7 +2,7 @@
 // Pure functions only. No React imports.
 // CITY_MAP, zone definitions, and EFFECTS are imported from CITY_MAP.js.
 
-import { CITY_MAP as AETHERIA_MAP, DISTRICTS as AETHERIA_DISTRICTS } from '../CITY_MAP.js';
+import { CITY_MAP as AETHERIA_MAP, DISTRICTS as AETHERIA_DISTRICTS, DISTRICTS } from '../CITY_MAP.js';
 
 // ── DEV MODE ─────────────────────────────────────────────────────────────────
 export const DEV_MODE = false;
@@ -213,66 +213,260 @@ export const ACHIEVEMENT_DEFS = [
   { id: 'DATA_HOARDER', desc: 'Fill inventory to maximum capacity',            reward: { rep: 10  } },
 ];
 
+// ── MILESTONES — one-time toast events (QoL, not gameplay) ────────────────
+// Cookie Clicker golden popup style. Pure positive reinforcement.
+export const MILESTONE_DEFS = [
+  { id: 'FIRST_10K',    check: s => (s.totalGoldEarned ?? 0) >= 10000,     title: 'FIRST 10K EARNED',     flavor: 'The first wire hum.' },
+  { id: 'FIRST_100K',   check: s => (s.totalGoldEarned ?? 0) >= 100000,    title: '100K CR MILESTONE',    flavor: 'Shadow economy takes notice.' },
+  { id: 'FIRST_1M',     check: s => (s.totalGoldEarned ?? 0) >= 1000000,   title: '1 MILLION CR',         flavor: 'The districts whisper your name.' },
+  { id: 'FIRST_10M',    check: s => (s.totalGoldEarned ?? 0) >= 10000000,  title: '10 MILLION CR',        flavor: 'You are the black market.' },
+  { id: 'FIRST_CAPTURE',check: s => (s.capturedHexes ?? []).length >= 2,   title: 'FIRST NODE SEIZED',    flavor: 'Territory is power.' },
+  { id: 'FIVE_NODES',   check: s => (s.capturedHexes ?? []).length >= 5,   title: 'NETWORK EXPANDING',    flavor: 'Five points of presence.' },
+  { id: 'TEN_NODES',    check: s => (s.capturedHexes ?? []).length >= 10,  title: 'NETWORK DOMINANT',     flavor: 'The grid answers to you.' },
+  { id: 'FIRST_AGENT',  check: s => (s.agents ?? []).length >= 1,          title: 'FIRST OPERATIVE',      flavor: 'You are no longer alone.' },
+  { id: 'FULL_ROSTER',  check: s => (s.agents ?? []).length >= 10,         title: 'FULL SYNDICATE',       flavor: 'An army of ghosts.' },
+  { id: 'NO_BUSTED_5',  check: s => (s.level ?? 1) >= 5 && !(s.everBustedThisRun), title: 'UNTOUCHABLE RUN',  flavor: 'Level 5, zero traces.' },
+  { id: 'HEAT_SURVIVOR',check: s => (s.heat ?? 0) >= 95 && !(s.everBustedThisRun), title: 'HEAT EDGE-WALKER', flavor: '95% heat. Still breathing.' },
+  { id: 'FIRST_PRESTIGE', check: s => (s.prestige ?? 0) >= 1,              title: 'AWAKENED',             flavor: 'The veil thins.' },
+  { id: 'MAX_COMBO',    check: s => (s.comboCount ?? 0) >= 15,             title: 'FLOW STATE',           flavor: 'Fifteen in chain. Unseen.' },
+];
+
+// Returns newly-triggered milestone IDs (for toasts).
+export function checkMilestones(state) {
+  const done = state.milestones ?? {};
+  const newly = [];
+  for (const def of MILESTONE_DEFS) {
+    if (done[def.id]) continue;
+    if (def.check(state)) newly.push(def);
+  }
+  return newly;
+}
+
 // ── PRESTIGE PERK TREE ────────────────────────────────────────────────────────
 
 export const PRESTIGE_PERK_DEFS = [
-	{ id: 'GHOST_STEP',     branch: 'GHOST',     reqLevel: 1, cost: 1,desc: 'Siphon stamina cost reduced from 10 to 8',           effect: 'SIPHON costs 8 STA instead of 10'          },
-	{ id: 'GHOST_AIM',      branch: 'GHOST',     reqLevel: 5, cost: 3,desc: 'Siphon / Deep Siphon success rate permanently +10%', effect: '+10% siphon/deep-siphon success rate'       },
-	{ id: 'GUILD_MASTER',   branch: 'OVERLORD',  reqLevel: 1, cost: 1,desc: 'All runners generate +25% credits per cycle',        effect: 'Runner income x1.25'                        },
-	{ id: 'FAST_FENCE',     branch: 'OVERLORD',  reqLevel: 5, cost: 3,desc: 'Auto-Fencer triggers every 15s instead of 30s',      effect: 'Auto-Fencer CD: 15s'                        },
-	{ id: 'INTEL_DISCOUNT', branch: 'ARCHITECT', reqLevel: 1, cost: 1,desc: 'Intel upgrade REP costs reduced by 20%',             effect: 'Intel Upgrades -20% REP cost'               },
-	{ id: 'PROXY_OVERLOAD', branch: 'ARCHITECT', reqLevel: 5, cost: 3,desc: 'Effective Proxy Server count +2 levels',             effect: 'Bust threshold +20 (2 virtual proxy levels)' },
-	{ id: 'EYE_REVEAL',     branch: 'ARCHITECT', reqLevel: 1, cost: 1,desc: 'Reveals exact countdown to next Police Raid',        effect: 'Raid timer always visible in OPS'           },
+  // ── GHOST branch (left wing, angles 220–250) ────────────────────
+  { id: 'GHOST_STEP',     branch: 'GHOST',     reqLevel: 1,  cost: 1, angle: 230, ring: 1, reqs: [],                                 desc: 'Siphon stamina cost reduced from 10 to 8',           effect: 'SIPHON -2 STA' },
+  { id: 'GHOST_FADE',     branch: 'GHOST',     reqLevel: 3,  cost: 2, angle: 242, ring: 2, reqs: ['GHOST_STEP'],                     desc: 'Heat decay +25% (permanent)',                        effect: 'Heat decays 25% faster' },
+  { id: 'GHOST_NERVE',    branch: 'GHOST',     reqLevel: 5,  cost: 3, angle: 221, ring: 2, reqs: ['GHOST_STEP'],                     desc: 'Combo timer +2s (gives more time to chain)',         effect: 'Combo timer 6s' },
+  { id: 'GHOST_AIM',      branch: 'GHOST',     reqLevel: 5,  cost: 3, angle: 248, ring: 3, reqs: ['GHOST_FADE'],                     desc: 'Siphon/Deep-Siphon success rate permanently +10%',   effect: '+10% siphon success' },
+  { id: 'GHOST_PATHWAY',  branch: 'GHOST',     reqLevel: 8,  cost: 5, angle: 232, ring: 3, reqs: ['GHOST_FADE','GHOST_NERVE'],       desc: 'Captures grant 100% less heat',                      effect: 'Capture → 0 heat added' },
+  { id: 'GHOST_FINAL',    branch: 'GHOST',     reqLevel: 10, cost: 8, angle: 237, ring: 4, reqs: ['GHOST_PATHWAY','GHOST_AIM'],      desc: 'Immune to Hunter captures (Silence still dangerous)', effect: 'Regular Hunter can\'t capture agents' },
+
+  // ── OVERLORD branch (right wing, angles 110–140) ────────────────
+  { id: 'GUILD_MASTER',   branch: 'OVERLORD',  reqLevel: 1,  cost: 1, angle: 130, ring: 1, reqs: [],                                 desc: 'All runners generate +25% credits per cycle',        effect: 'Runner income ×1.25' },
+  { id: 'TITHE',          branch: 'OVERLORD',  reqLevel: 3,  cost: 2, angle: 118, ring: 2, reqs: ['GUILD_MASTER'],                   desc: 'Every siphon also gives +1 REP',                     effect: 'Siphon → +1 REP' },
+  { id: 'FAST_FENCE',     branch: 'OVERLORD',  reqLevel: 5,  cost: 3, angle: 139, ring: 2, reqs: ['GUILD_MASTER'],                   desc: 'Auto-Fencer triggers every 15s instead of 30s',      effect: 'Auto-Fencer 2× faster' },
+  { id: 'MARKET_LORD',    branch: 'OVERLORD',  reqLevel: 5,  cost: 3, angle: 112, ring: 3, reqs: ['TITHE'],                          desc: 'Item sell value +30%',                               effect: 'Items sell ×1.3' },
+  { id: 'EMPIRE',         branch: 'OVERLORD',  reqLevel: 8,  cost: 5, angle: 128, ring: 3, reqs: ['TITHE','FAST_FENCE'],             desc: 'Capture rewards +50% CR',                            effect: 'Capture CR ×1.5' },
+  { id: 'TYRANT',         branch: 'OVERLORD',  reqLevel: 10, cost: 8, angle: 123, ring: 4, reqs: ['EMPIRE','MARKET_LORD'],           desc: 'All income ×2 when you have 10+ agents',             effect: '10+ agents: all CR ×2' },
+
+  // ── ARCHITECT branch (top wing, angles 340–20) ──────────────────
+  { id: 'INTEL_DISCOUNT', branch: 'ARCHITECT', reqLevel: 1,  cost: 1, angle: 350, ring: 1, reqs: [],                                 desc: 'Intel upgrade REP costs reduced by 20%',             effect: 'Intel -20% REP' },
+  { id: 'EYE_REVEAL',     branch: 'ARCHITECT', reqLevel: 1,  cost: 1, angle: 10,  ring: 1, reqs: [],                                 desc: 'Reveals exact countdown to next Police Raid',        effect: 'Raid timer always visible' },
+  { id: 'DEEP_SCAN',      branch: 'ARCHITECT', reqLevel: 3,  cost: 2, angle: 358, ring: 2, reqs: ['INTEL_DISCOUNT'],                 desc: 'Starts each run with NET_SCANNER intel unlocked',    effect: 'Auto NET_SCANNER' },
+  { id: 'PROXY_OVERLOAD', branch: 'ARCHITECT', reqLevel: 5,  cost: 3, angle: 340, ring: 2, reqs: ['INTEL_DISCOUNT'],                 desc: 'Proxy Servers give +10% bust resist each',           effect: 'Proxies +10% resist/lvl' },
+  { id: 'SERVER_FARM',    branch: 'ARCHITECT', reqLevel: 5,  cost: 3, angle: 18,  ring: 2, reqs: ['EYE_REVEAL'],                     desc: 'Max bandwidth +2 at start of each run',              effect: 'Start +2 BW' },
+  { id: 'CONTRACTOR',     branch: 'ARCHITECT', reqLevel: 8,  cost: 5, angle: 8,   ring: 3, reqs: ['DEEP_SCAN','SERVER_FARM'],        desc: 'Missions complete 25% faster',                       effect: 'Mission time ×0.75' },
+  { id: 'MIRROR_PROTOCOL',branch: 'ARCHITECT', reqLevel: 10, cost: 8, angle: 354, ring: 4, reqs: ['CONTRACTOR','PROXY_OVERLOAD'],    desc: 'Failed missions refund 50% of deploy cost',          effect: 'Mission fail refund 50%' },
+
+  // ── UNIVERSAL branch (outer ring 5, prestige-gated) ─────────────
+  { id: 'VOID_ECHO',      branch: 'UNIVERSAL', reqLevel: 10, cost: 10, angle: 70,  ring: 5, reqs: ['TYRANT'],                        desc: 'Prestige multiplier +50% (stacks with base)',        effect: 'Prestige mult ×1.5',      requiresPrestige: 3 },
+  { id: 'SECOND_WIND',    branch: 'UNIVERSAL', reqLevel: 10, cost: 10, angle: 290, ring: 5, reqs: ['GHOST_FINAL'],                   desc: 'First busted per run auto-clears in 1s',             effect: 'First busted 1s lockout', requiresPrestige: 3 },
+  { id: 'ANOMALY',        branch: 'UNIVERSAL', reqLevel: 10, cost: 15, angle: 180, ring: 5, reqs: ['MIRROR_PROTOCOL','TYRANT','GHOST_FINAL'], desc: 'Unlocks ANOMALY events (random lore + bonuses)', effect: 'Anomaly events active',   requiresPrestige: 5 },
 ];
 
+// Flavor text per perk — used by PerkTreeModal detail sidebar.
+export const PERK_FLAVOR = {
+  GHOST_STEP:     'you learned to breathe between their heartbeats.',
+  GHOST_FADE:     'the air closes behind you like it never parted.',
+  GHOST_NERVE:    'a longer exhale. another second before the fall.',
+  GHOST_AIM:      'you do not aim. you remember where they will be.',
+  GHOST_PATHWAY:  'they look where you were. you are already home.',
+  GHOST_FINAL:    'hunters describe a shape. the shape describes them.',
+  GUILD_MASTER:   'a thousand hands move and the coin reaches the center.',
+  TITHE:          'every theft is a prayer, and prayer is counted.',
+  FAST_FENCE:     'the fence no longer sleeps. the market never closes.',
+  MARKET_LORD:    'worth is a rumor. you are the loudest rumor.',
+  EMPIRE:         'captured does not mean lost. captured means leverage.',
+  TYRANT:         'ten shadows and one throne. no one sees it but you.',
+  INTEL_DISCOUNT: 'information flows downhill. you built the slope.',
+  EYE_REVEAL:     'the raid is a clock. you now hold the key.',
+  DEEP_SCAN:      'every run begins knowing. ignorance is a tax.',
+  PROXY_OVERLOAD: 'one signal fractured into seventy. they chase echoes.',
+  SERVER_FARM:    'concrete hums under the city. it hums for you.',
+  CONTRACTOR:     'you do not ask. you schedule.',
+  MIRROR_PROTOCOL:'the failure was a rehearsal. the refund was a lesson.',
+  VOID_ECHO:      'what you lost was never subtracted. it was folded.',
+  SECOND_WIND:    'the cell door opens before it closes.',
+  ANOMALY:        'something is watching the watchers. it smiles at you.',
+};
+
+// ── ZERO TUTORIAL DIALOGUES ───────────────────────────────────────────────
+// Diegetic onboarding via ZERO log lines. Each fires once per player install.
+// Persisted in localStorage (sg_zero_dialogues_seen) so HARD_RESET doesn't replay.
+// Module-level Set guard prevents double-dispatch race conditions.
+
+const ZERO_SEEN_KEY = 'sg_zero_dialogues_seen';
+
+function loadZeroSeen() {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(ZERO_SEEN_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveZeroSeen(seen) {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.setItem(ZERO_SEEN_KEY, JSON.stringify(seen)); } catch {}
+}
+
+// Module-level cache — synchronously updated to prevent dispatch races.
+const _ZERO_DISPATCHED = new Set(loadZeroSeen());
+
+const TUTORIAL_DIALOGUES = [
+  { id: 'first_siphon',
+    trigger: (s) => (s.totalActions ?? 0) >= 1,
+    line: "[ZERO >>] one. they didn't see you yet." },
+
+  { id: 'first_combo_3',
+    trigger: (s) => (s.combo ?? 0) >= 3,
+    line: '[ZERO >>] hold the rhythm. predators move in patterns.' },
+
+  { id: 'heat_rising',
+    trigger: (s) => (s.heat ?? 0) >= 30,
+    line: "[ZERO >>] they're scanning now. break or burn." },
+
+  { id: 'first_busted',
+    trigger: (s) => (s.bustedLockout ?? 0) > 0,
+    line: '[ZERO >>] caught. it happens. learn the patterns and stop.' },
+
+  { id: 'first_level',
+    trigger: (s) => (s.level ?? 1) >= 2,
+    line: "[ZERO >>] level up. they're noticing." },
+
+  { id: 'first_lay_low',
+    trigger: (s) => (s.layLowActive ?? false),
+    line: '[ZERO >>] good. silence is a weapon.' },
+
+  { id: 'first_agent',
+    trigger: (s) => (s.agents?.length ?? 0) >= 1,
+    line: '[ZERO >>] you brought help. trust costs more than it earns.' },
+
+  { id: 'first_capture',
+    trigger: (s) => (s.capturedHexes?.length ?? 0) >= 1,
+    line: "[ZERO >>] root access. that's how empires start." },
+
+  { id: 'capture_5',
+    trigger: (s) => (s.capturedHexes?.length ?? 0) >= 5,
+    line: '[ZERO >>] five nodes. the network is yours. aetheria_spire is waiting.' },
+
+  { id: 'capture_10',
+    trigger: (s) => (s.capturedHexes?.length ?? 0) >= 10,
+    line: "[ZERO >>] ten. they're building a file on you. it's thick." },
+
+  { id: 'pre_prestige',
+    trigger: (s) => (s.level ?? 1) >= 8 && (s.prestige ?? 0) === 0,
+    line: "[ZERO >>] you're close. awakening clears the slate. choose what you keep." },
+
+  { id: 'first_prestige',
+    trigger: (s) => (s.prestige ?? 0) >= 1,
+    line: '[ZERO >>] you ascended. the eye flinched. it remembers you now.' },
+
+  { id: 'second_prestige',
+    trigger: (s) => (s.prestige ?? 0) >= 2,
+    line: "[ZERO >>] twice now. you're becoming what they were afraid of." },
+
+  { id: 'eye_awakened',
+    trigger: (s) => (s.prestige ?? 0) >= 3,
+    line: '[ZERO >>] the eye is awake. it sees you. the city is different now.' },
+];
+
+export function checkTutorialDialogues(state) {
+  // Sync state-tracked seen into module set
+  const stateSeen = state.zeroDialoguesSeen ?? [];
+  for (const id of stateSeen) _ZERO_DISPATCHED.add(id);
+
+  const newLines = [];
+  for (const d of TUTORIAL_DIALOGUES) {
+    if (_ZERO_DISPATCHED.has(d.id)) continue;
+    if (d.trigger(state)) {
+      _ZERO_DISPATCHED.add(d.id);  // sync update — second call sees it
+      newLines.push(d.line);
+    }
+  }
+
+  if (newLines.length === 0) {
+    return { newLines: [], newSeen: stateSeen };
+  }
+
+  const newSeen = [..._ZERO_DISPATCHED];
+  saveZeroSeen(newSeen);
+  return { newLines, newSeen };
+}
+
+// Optional: dev-only utility to replay tutorial (called from settings or console)
+export function resetZeroDialogues() {
+  _ZERO_DISPATCHED.clear();
+  saveZeroSeen([]);
+}
+
+export const TUTORIAL_DIALOGUE_COUNT = TUTORIAL_DIALOGUES.length;
 
 // ── PROGRESSIVE DISCLOSURE ────────────────────────────────────────────────────
 
 export function isUnlocked(state, feature) {
   if (DEV_MODE) return true;
-  const lvl = state.level ?? 1;
-  const rep = Math.max(state.maxReputation ?? 0, state.reputation ?? 0);
+  const lvl     = state.level ?? 1;
+  const rep     = Math.max(state.maxReputation ?? 0, state.reputation ?? 0);
   const prestige = state.prestige ?? 0;
   const actions = state.totalActions ?? 0;
+  const agents  = state.agents?.length ?? 0;
+  const captured = state.capturedHexes?.length ?? 0;
 
   switch (feature) {
-      // Always visible from start
-      case 'siphon':       return true;
-      case 'gold':         return true;
-      case 'log':          return true;
-      case 'stamina':      return true;
-      case 'heat':         return true;
+    // ── Always visible ─────────────────────────────────────────
+    case 'siphon':       return true;
+    case 'gold':         return true;
+    case 'log':          return true;
+    case 'stamina':      return true;
+    case 'heat':         return true;
 
-      // Tier 1 — Early (first 5-10 minutes)
-      case 'combo':        return (state.siphonsWithoutBust ?? 0) >= 3;
-      case 'breach':       return lvl >= 2 && actions >= 10;
-      case 'xp':           return lvl >= 2;
+    // ── Tier 1: First 5-10 minutes ─────────────────────────────
+    case 'combo':        return (state.siphonsWithoutBust ?? 0) >= 3;
+    case 'xp':           return lvl >= 2;
+    case 'breach':       return lvl >= 2;  // Dropped action gate — level alone is enough
 
-      // Tier 2 — Mid-early (15-30 minutes)
-      case 'upgrades_tab': return lvl >= 3 && actions >= 1;
-      case 'rep':          return lvl >= 4;
-      case 'barter':       return lvl >= 4 && rep >= 10;
-      case 'agency':       return lvl >= 5 && rep >= 30;       // was lvl 3 rep 20
-      case 'runners':      return lvl >= 5 && rep >= 30;       // was lvl 3 rep 20
+    // ── Tier 2: 15-30 minutes ──────────────────────────────────
+    case 'upgrades_tab': return lvl >= 3;
+    case 'rep':          return lvl >= 3 || rep > 0;  // Show once you have any
+    case 'barter':       return lvl >= 4;
+    case 'agency':       return lvl >= 5;             // Dropped rep gate — too strict
+    case 'runners':      return lvl >= 5;
 
-      // Tier 3 — Mid (30-60 minutes)
-      case 'intel':        return lvl >= 6 && rep >= 100;
-      case 'protocol':     return lvl >= 7 && rep >= 150;      // was lvl 4 rep 50
-      case 'district':     return lvl >= 8 && rep >= 200;      // was lvl 6 rep 50
-      case 'daily':        return lvl >= 6;
+    // ── Tier 3: 30-60 minutes ──────────────────────────────────
+    case 'intel':        return lvl >= 6 && rep >= 50;
+    case 'daily':        return lvl >= 6;
+    case 'protocol':     return lvl >= 7;
+    case 'district':     return lvl >= 7;  // Capture first unlocks earlier
+    case 'manual_cool':  return lvl >= 7;
+    case 'deep_siphon':  return lvl >= 8;                    // Dropped 200-action gate
 
-      // Tier 4 — Late (1-2 hours)
-      case 'deep_siphon':  return lvl >= 10 && actions >= 200; // was lvl 6
-      case 'manual_cool':  return lvl >= 10;                   // was lvl 6
-      case 'ai_subroutine':return lvl >= 10;
-      case 'dark_market':  return prestige >= 1 || (lvl >= 12 && rep >= 500);
+    // ── Tier 4: 1-2 hours ──────────────────────────────────────
+    case 'overclock':    return lvl >= 9;
+    case 'mainframe':    return lvl >= 10;
+    case 'ai_subroutine':return lvl >= 10;
 
-      // Tier 5 — Endgame / prestige-gated
-      case 'mainframe':    return lvl >= 10 && rep >= 2000;    // was lvl 8 rep 1000
-      case 'overclock':    return lvl >= 12 && rep >= 300;
-      case 'squad_system': return (state.agents?.length || 0) >= 6 && prestige >= 1;
+    // ── Tier 5: Endgame / prestige-gated ───────────────────────
+    case 'dark_market':  return prestige >= 1 || (lvl >= 12 && rep >= 500);
+    case 'squad_system': return agents >= 6 && prestige >= 1;
 
-      default:             return true;
+    // AWAKENING tab — visible once mainframe reached OR after first prestige
+    // (prestige reset → lvl 1, but player still has points to spend)
+    case 'awakening_tab': return lvl >= 10 || prestige >= 1;
+
+    default:             return true;
   }
 }
 
@@ -314,23 +508,10 @@ const RUNNER_LABELS = {
 // ── DISTRICTS ─────────────────────────────────────────────────────────────────
 
 // ── ZONE PROPERTIES ───────────────────────────────────────────────────────────
-// Maps CITY_MAP.js zone IDs (Z1-Z7) to game-mechanical properties.
-// state.district is now one of these keys.
-
-export const DISTRICTS = {
-	Z1: { id: 'Z1', name: 'NEON_CORE',      color: '#ffc174', desc: 'High tech, high risk. Heart of Aetheria.', lootMultiplier: 4.0, xpMultiplier: 2.5, heatDecayBase: 0.1 },
-	Z2: { id: 'Z2', name: 'INDUSTRIAL_WASTES', color: '#ff6b35', desc: 'Raw resources. Gold focus. Toxic.', lootMultiplier: 2.0, xpMultiplier: 1.5, heatDecayBase: 0.2 },
-	Z3: { id: 'Z3', name: 'EASTERN_TECH',      color: '#00d4ff', desc: 'Encryption and security complexes.', lootMultiplier: 2.5, xpMultiplier: 2.0, heatDecayBase: 0.15 },
-	Z4: { id: 'Z4', name: 'WESTERN_SLUMS',     color: '#b347ff', desc: 'Stealth and black market networks.', lootMultiplier: 1.0, xpMultiplier: 1.0, heatDecayBase: 0.3 },
-	Z5: { id: 'Z5', name: 'CORP_CITADEL',      color: '#ff2244', desc: 'Endgame zone. GID controlled.', lootMultiplier: 8.0, xpMultiplier: 4.0, heatDecayBase: 0.05 },
-	Z6: { id: 'Z6', name: 'THE_UNDERBELLY',    color: '#22ff88', desc: 'Hidden. Accessed via Subway Nexus.', lootMultiplier: 3.0, xpMultiplier: 3.0, heatDecayBase: 0.4 },
-	Z7: { id: 'Z7', name: 'BUFFER_DISTRICTS',  color: '#888899', desc: 'Transition zones. Contested.', lootMultiplier: 1.5, xpMultiplier: 1.2, heatDecayBase: 0.2 },
-};
+// Single source of truth: CITY_MAP.js. Re-exported here for convenience.
+export { DISTRICTS } from '../CITY_MAP.js';
 
 // ── CANONICAL HEX MAP (from CITY_MAP.js) ──────────────────────────────────────
-// CITY_MAP  — full 28-hex Aetheria grid  (id, q, r, connections, effectHooks…)
-// CITY_ZONES — zone palette + metadata  (Z1-Z7 colors and descriptions)
-
 export const CITY_MAP   = AETHERIA_MAP;
 export const CITY_ZONES = AETHERIA_DISTRICTS;
 
@@ -343,29 +524,6 @@ export function canCapture(state, hexId) {
 	const owned = state.capturedHexes ?? ['H00'];
 	if (owned.includes(hexId)) return false;
 	return hex.connections.some(id => owned.includes(id));
-}
-
-// Captures a hex: adds it to capturedHexes, reveals neighbors in mapDiscovery.
-export function captureHex(state, hexId) {
-	if (!canCapture(state, hexId)) return state;
-	const hex        = CITY_MAP[hexId];
-	const zoneName   = CITY_ZONES[hex.districtId]?.name ?? hex.districtId;
-	const captured   = [...(state.capturedHexes ?? []), hexId];
-	const discovered = [...new Set([
-		...(state.mapDiscovery ?? []),
-		hexId,
-		...hex.connections.filter(id => CITY_MAP[id]),
-	])];
-  if (next.capturedHexes.length === 1 && state.capturedHexes.length === 0) {
-    next = addZero(next, 'first_capture');
-  }
-
-	return {
-		...state,
-		capturedHexes: captured,
-		mapDiscovery:  discovered,
-		log: addLog(state.log, `:: NODE_CAPTURED :: ${hex.label} :: ${zoneName}`),
-	};
 }
 
 // Aggregates all passive modifiers from currently owned hex effectHooks.
@@ -510,10 +668,142 @@ export const INTEL_UPGRADE_DEFS = [
   { key: 'corpMole',     label: 'CORP_MOLE',     repCost: 50,  max: 1, effect: 'Heat decay 2x faster' },
   { key: 'deepSource',   label: 'DEEP_SOURCE',   repCost: 100, max: 1, effect: 'Loot value +10%' },
   { key: 'darkExchange', label: 'DARK_EXCHANGE', repCost: 200, max: 1, effect: 'Dark Market cooldown -30min' },
-  { key: 'serverRacks',  label: 'SOFT_BANDWIDTH', repCost: 150, max: 30, effect: '+1 Max Bandwidth' },
+  { key: 'serverRacks',  label: 'SOFT_BANDWIDTH', repCost: 150, max: 21, effect: '+1 Max Bandwidth (max 22 channels)' },
   { key: 'hardenedCables', label: 'HARDENED_NODES', repCost: 500, max: 5, effect: 'Node Decay -20% per level' },
   { key: 'quantumRelay', label: 'QUANTUM_LINK', repCost: 2000, max: 1, effect: 'One random node immune to Decay' },
 ];
+
+// Replace existing REVEAL_DEFS in gameLogic.js with this block.
+// Then update LAY_LOW reducer + tick to use getLayLowTier helper below.
+
+export const REVEAL_DEFS = [
+  // ── INTEL — information panels ───────────────────────────────────────
+  {
+    id:     'TIMELINE',
+    label:  'TIMELINE_PROBE',
+    flavor: 'Reveal incoming events. Plan ahead.',
+    cost:   500,
+    branch: 'INTEL',
+    icon:   '◐',
+  },
+  {
+    id:     'NORTH_STAR',
+    label:  'ENDGAME_TARGET',
+    flavor: 'Lock the AETHERIA_SPIRE on your HUD. See progress to ascension.',
+    cost:   1500,
+    branch: 'INTEL',
+    icon:   '◉',
+  },
+  {
+    id:     'INV_VALUE_HUD',
+    label:  'LEDGER_HUD',
+    flavor: 'Display total inventory value next to inventory header.',
+    cost:   2000,
+    branch: 'INTEL',
+    icon:   '⌬',
+  },
+  {
+    id:     'RECENT_GAINS',
+    label:  'GAIN_INSPECTOR',
+    flavor: 'Hover CR for last 60s breakdown by source.',
+    cost:   3000,
+    branch: 'INTEL',
+    icon:   '⌖',
+  },
+  {
+    id:     'HEAT_PREVIEW',
+    label:  'HEAT_FORECAST',
+    flavor: 'Show projected heat increase before each action.',
+    cost:   5000,
+    branch: 'INTEL',
+    icon:   '◊',
+  },
+
+  // ── TWEAK — modify core mechanics ────────────────────────────────────
+  {
+    id:     'LAYLOW_T1',
+    label:  'DEEP_BREATH',
+    flavor: 'LAY_LOW 30s → 28s. Cooling +15%.',
+    cost:   4000,
+    branch: 'TWEAK',
+    icon:   '◇',
+  },
+  {
+    id:     'LAYLOW_T2',
+    label:  'GHOST_PROTOCOL_X',
+    flavor: 'LAY_LOW 28s → 24s. Cooling +50%. Requires DEEP_BREATH.',
+    cost:   12000,
+    branch: 'TWEAK',
+    icon:   '◇',
+    requires: 'LAYLOW_T1',
+  },
+  {
+    id:     'LAYLOW_T3',
+    label:  'SHADOW_DIVE',
+    flavor: 'LAY_LOW 24s → 18s. Cooling +110%. Requires GHOST_PROTOCOL_X.',
+    cost:   30000,
+    branch: 'TWEAK',
+    icon:   '◇',
+    requires: 'LAYLOW_T2',
+  },
+  {
+    id:     'BUFFER_STABILIZER',
+    label:  'BUFFER_STABILIZER',
+    flavor: 'Combo timer +3s. Click with rhythm, not panic.',
+    cost:   25000,
+    branch: 'TWEAK',
+    icon:   '◈',
+  },
+  {
+    id:     'CRIT_LENS',
+    label:  'CRIT_LENS',
+    flavor: 'Siphon crit chance +5%. Higher highs.',
+    cost:   8000,
+    branch: 'TWEAK',
+    icon:   '✦',
+  },
+
+  // ── AUTO — passive helpers (NO forced-wait actions) ──────────────────
+  {
+    id:     'IDLE_FOCUS',
+    label:  'DEEP_FOCUS',
+    flavor: 'Idle focus bonus kicks in 30s sooner.',
+    cost:   10000,
+    branch: 'AUTO',
+    icon:   '⊙',
+  },
+];
+
+// ── LAY_LOW tier resolver ─────────────────────────────────────────────────
+// Pure fn — looks up which tier player owns and returns mechanics.
+// Used by LAY_LOW reducer to set duration + decay rate.
+export function getLayLowTier(state) {
+  const r = state.reveals ?? {};
+  if (r.LAYLOW_T3) return { tier: 3, duration: 18, decayPerSec: 4.2, label: 'SHADOW_DIVE' };
+  if (r.LAYLOW_T2) return { tier: 2, duration: 24, decayPerSec: 3.0, label: 'GHOST_PROTOCOL_X' };
+  if (r.LAYLOW_T1) return { tier: 1, duration: 28, decayPerSec: 2.3, label: 'DEEP_BREATH' };
+  return            { tier: 0, duration: 30, decayPerSec: 2.0, label: 'LAY_LOW' };
+}
+
+// ── Buy reveal (with require chain) ───────────────────────────────────────
+export function buyReveal(state, revealId) {
+  const def = REVEAL_DEFS.find(d => d.id === revealId);
+  if (!def) return state;
+  if ((state.reveals ?? {})[revealId]) return state;
+  if (state.gold < def.cost) return state;
+  if (def.requires && !(state.reveals ?? {})[def.requires]) return state;
+
+  return {
+    ...state,
+    gold: state.gold - def.cost,
+    reveals: { ...(state.reveals ?? {}), [revealId]: 1 },
+    log: addLog(state.log, `:: REVEAL :: ${def.label} acquired.`),
+  };
+}
+
+export function hasReveal(state, revealId) {
+  return !!(state.reveals ?? {})[revealId];
+}
 
 // ── LORE MESSAGES ─────────────────────────────────────────────────────────────
 
@@ -578,37 +868,69 @@ const MSG = {
 // ── ZERO MESSAGES ─────────────────────────────────────────────────────────────
 
 const ZERO = {
-	first_siphon:         "Terminal active. Extract what you can.",
-	level_2:              "Neural link stabilizing. Breach protocol unlocked.",
-	level_3:              "You need help. I know people.",
-	level_4:              "The underground economy is open to you now.",
-	level_5:              "The city is starting to notice you. Switch protocols wisely.",
-	level_6:              "Deep channels accessible. Stay off the grid.",
-	level_7:              "They know you exist. They don't know what you are. Keep it that way.",
-	level_8:              "Mainframe is exposed. One shot.",
-	first_busted:         "They caught you. But you're still alive. That means something.",
-	first_runner:         "You're building something. THE EYE doesn't like that.",
-	first_prestige:       "New iteration. Same city. You remember more than you should.",
-	gold_10k:             "Money means nothing here. REP means everything.",
-	betrayal:             "Someone talked. Check your roster.",
-	enc_key_set:          "Collect all five. What they unlock will change everything.",
-	bounty:               "They put a price on your head. Lay low.",
-	night_stalker_active: "Going loud? I'll have the getaway car ready, just in case.",
-  first_fail:            "Traced. Heat fades. Try again.", // NOVÉ
-  first_capture:         "First node. First step into the network.", // NOVÉ
-  prestige_ready:        "You have enough. Time to see behind the veil.", // NOVÉ
-	quantum_drop:         "That chip... it's shifting frequencies. Be careful who you sell it to.",
+	first_siphon:         "terminal active. extract what you can.",
+	level_2:              "neural link stabilizing. breach protocol unlocked.",
+	level_3:              "you need help. i know people.",
+	level_4:              "the underground economy is open to you now.",
+	level_5:              "the city is starting to notice you. switch protocols wisely.",
+	level_6:              "deep channels accessible. stay off the grid.",
+	level_7:              "they know you exist. they don't know what you are. keep it that way.",
+  level_8:              "mainframe is exposed. one shot.",
+	level_9:              "deep siphon unlocked. the real data runs deeper than you thought.",
+	level_10:             "a subroutine now runs in your stead. you're scaling. the eye notices scale.",
+	eye_awakened:         "it sees you. not as a ghost, not as a pattern — as a person. that's worse. be careful.",
+  first_busted:         "they caught you. but you're still alive. that means something.",
+	first_runner:         "you're building something. the eye doesn't like that.",
+	first_prestige:       "new iteration. same city. you remember more than you should.",
+	gold_10k:             "money means nothing here. rep means everything.",
+	betrayal:             "someone talked. check your roster.",
+	enc_key_set:          "collect all five. what they unlock will change everything.",
+	bounty:               "they put a price on your head. lay low.",
+	night_stalker_active: "going loud? i'll have the getaway car ready, just in case.",
+  first_fail:            "traced. heat fades. try again.", // nové
+  first_capture:         "first node. first step into the network.", // nové
+  prestige_ready:        "you have enough. time to see behind the veil.", // nové
+	quantum_drop:         "that chip... it's shifting frequencies. be careful who you sell it to.",
 };
 
 function addZero(state, key) {
   const zm = state.zeroMessages ?? [];
   if (zm.includes(key) || !ZERO[key]) return state;
+  const text = ZERO[key];
+  const level = ZERO_LEVELS[key] ?? 'normal';
+
+  const history = state.zeroHistory ?? [];
+  const newMessage = {
+    key,
+    text,
+    level,
+    ts: Date.now(),
+    seen: false,
+    id: `zero_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+  };
+
+  // ZERO messages go to NEURAL_LINK panel + history.
+  // Deliberately NOT pushed to state.log (would double-display in SystemLog).
   return {
     ...state,
     zeroMessages: [...zm, key],
-    log: addLog(state.log, `[ZERO >>] ${ZERO[key]}`),
+    zeroLastMessage: newMessage,
+    zeroHistory: [...history, newMessage].slice(-50),
   };
 }
+
+// Mark messages "critical" → trigger fullscreen GHOST overlay.
+// Use sparingly: act transitions, deaths, prestige, ending beats.
+// Everything else is 'normal' (shows in NEURAL_LINK panel only).
+const ZERO_LEVELS = {
+  intro_complete:  'critical',  // Act 1 opening
+  first_busted:    'critical',  // first BUSTED
+  level_3:         'critical',  // unlock UPGRADES — story beat
+  agency_unlock:   'critical',  // first agent
+  district_unlock: 'critical',  // map reveals
+  prestige_ready:  'critical',  // awakening eligible
+  // others default to 'normal'
+};
 
 // Hneď vedľa ZERO objektu
 const CONTEXT_MSG = {
@@ -652,15 +974,22 @@ function tryDropEncKey(state) {
 export function decrypt(state) {
   const keys = state.encKeys ?? [];
   if (ENC_KEY_IDS.some(k => !keys.includes(k))) return state; // not all 5
-  const income = applyIncome(state, 500);
+
+  // Scale reward with level + prestige. Level 8 = ~40K CR, 500 REP.
+  const lvl = state.level ?? 1;
+  const prestige = state.prestige ?? 0;
+  const goldReward = Math.round(500 * Math.pow(1.8, lvl - 1) * (1 + prestige * 0.5));
+  const repReward  = Math.round(20 * Math.pow(1.4, lvl - 1) * (1 + prestige * 0.3));
+
+  const income = applyIncome(state, goldReward);
   let next = {
     ...state,
     encKeys:    [],
     gold:       income.gold,
     totalGoldEarned: income.totalGoldEarned,
     runGoldEarned:   income.runGoldEarned,
-    ...addRep(state, 20),
-    log: addLog(state.log, ':: DECRYPT :: ALL KEYS CONSUMED :: +500 CR :: +20 REP'),
+    ...addRep(state, repReward),
+    log: addLog(state.log, `:: DECRYPT :: ALL KEYS CONSUMED :: +${income._earned.toLocaleString()} CR :: +${repReward} REP`),
   };
   next = addZero(next, 'enc_key_set');
   return next;
@@ -741,19 +1070,19 @@ export function heatStatus(heat) {
   return 'CLEAR';
 }
 
-export function effectiveSuccessRate(baseRate, level, levelBonus, heat, ghostProtocol = 0, bountyActive = false) {
+export function effectiveSuccessRate(baseRate, level, levelBonus, heat, ghostProtocol = 0, bountyActive = false, protoSuccessMod = 0) {
   const heatPenalty =
     heat >= 81 ? 0.40 :
     heat >= 61 ? 0.25 :
     heat >= 31 ? 0.10 : 0;
   const gp          = (baseRate === 0.70 || baseRate === 0.65) ? ghostProtocol * 0.02 : 0;
   const bountyPen   = bountyActive ? 0.20 : 0;
-  return Math.min(0.95, Math.max(0.05, baseRate + (level - 1) * levelBonus + gp - heatPenalty - bountyPen));
+  return Math.min(0.95, Math.max(0.05, baseRate + (level - 1) * levelBonus + gp - heatPenalty - bountyPen + protoSuccessMod));
 }
 
 // ── PRIVATE HELPERS ───────────────────────────────────────────────────────────
 
-function addLog(log, message) {
+export function addLog(log, message) {
 	const d = new Date();
   const t = getTimestamp();
 	return [`[${t}] ${message}`, ...log].slice(0, 50);
@@ -847,37 +1176,82 @@ function makeItem(template, districtMult = 1, upgrades = {}, intelUpgrades = {})
 	return item;
 }
 
+// Helper: increment both global heat and current district's local heat
+function addHeatLocal(state, amount) {
+  const did = state.district;
+  const dh = { ...(state.districtHeat ?? {}) };
+  dh[did] = Math.min(100, (dh[did] ?? 0) + amount);
+  return {
+    heat: Math.min(100, (state.heat ?? 0) + amount),
+    districtHeat: dh,
+  };
+}
+
 function applyBustedCheck(state) {
-  const mapBustBonus  = calculateMapModifiers(state).bustThresholdBonus;
-  const bustThreshold = 100 + (state.upgrades?.proxyServers ?? 0) * 10 + ((state.prestigePerks?.PROXY_OVERLOAD) ? 20 : 0) + mapBustBonus;
-  if (state.heat < bustThreshold) return state;
-  const iceBreakerLvl  = state.upgrades?.iceBreaker ?? 0;
-  const lockout        = Math.max(1, 10 - iceBreakerLvl);
-  const hasQE          = (state.upgrades?.quantumEncryption ?? 0) >= 1;
-  const savedInventory = hasQE && state.inventory.length > 0
-    ? (() => {
-        const shuffled = [...state.inventory].sort(() => Math.random() - 0.5);
-        return shuffled.slice(0, Math.max(1, Math.floor(state.inventory.length * 0.2)));
-      })()
-    : [];
-  const invMsg = hasQE && savedInventory.length > 0
-    ? `:: ${savedInventory.length} ITEM(S) ENCRYPTED — RECOVERED`
-    : ':: INVENTORY LOST';
+  if ((state.heat ?? 0) < 100) return state;
+
+  // === RESIST LOGIC ===
+  const mapBustBonus = calculateMapModifiers(state).bustThresholdBonus;
+
+  const resistChance = Math.min(
+    0.80,
+    (state.upgrades?.proxyServers ?? 0) * 0.10 +
+    (state.prestigePerks?.PROXY_OVERLOAD ? 0.20 : 0) +
+    (mapBustBonus * 0.01)
+  );
+
+  if (Math.random() < resistChance) {
+    return {
+      ...state,
+      heat: 80,
+      log: addLog(
+        state.log,
+        `:: PROXY_REBOUND :: Signature ghosted. Heat cooled to 80%. (${Math.round(resistChance * 100)}% resist)`
+      ),
+    };
+  }
+
+  // === ORIGINAL BUSTED LOGIC ===
+  const iceBreakerLvl = state.upgrades?.iceBreaker ?? 0;
+  const lockout = Math.max(1, 10 - iceBreakerLvl);
+
+  const hasQE = (state.upgrades?.quantumEncryption ?? 0) >= 1;
+
+  const savedInventory =
+    hasQE && state.inventory.length > 0
+      ? (() => {
+          const shuffled = [...state.inventory].sort(() => Math.random() - 0.5);
+          return shuffled.slice(0, Math.max(1, Math.floor(state.inventory.length * 0.2)));
+        })()
+      : [];
+
+  const invMsg =
+    hasQE && savedInventory.length > 0
+      ? `:: ${savedInventory.length} ITEM(S) ENCRYPTED — RECOVERED`
+      : ':: INVENTORY LOST';
+
   let next = {
     ...state,
-    heat:              0,
-    inventory:         savedInventory,
-    layLowActive:      false,
-    layLowTimer:       0,
-    comboCount:        0,
-    heatSpikeTimer:    0,
-    bountyActive:      false,
-    bustedLockout:     lockout,
+    heat: 0,
+    inventory: savedInventory,
+    layLowActive: false,
+    layLowTimer: 0,
+    comboCount: 0,
+    heatSpikeTimer: 0,
+    peakGold: 0,
+    milestones: {},
+    milestoneToastQueue: [],
+    sessionStartTime: Date.now(),
+    totalPlayTime: 0,
+    runPlayTime: 0,
+    bountyActive: false,
+    bustedLockout: lockout,
     siphonsWithoutBust: 0,
-    everBustedThisRun:  true,
-    feedback:          { type: 'BUSTED', ts: Date.now() },
+    everBustedThisRun: true,
+    feedback: { type: 'BUSTED', ts: Date.now() },
     log: addLog(state.log, `:: [BUSTED] ${MSG.busted()} ${invMsg} :: ${lockout}s LOCKOUT`),
   };
+
   next = addZero(next, 'first_busted');
   return next;
 }
@@ -891,121 +1265,191 @@ function addRep(state, amount) {
   };
 }
 
-function checkLevelUp(state) {
+// ── LEVEL UP ──────────────────────────────────────────────────────────────────
+// Each level may unlock features. We push:
+//   1× toast (state-changing event, persistent visible)
+//   1× log line (summary, not 4 separate hints)
+//   1× ZERO line (queued, rate-limited via zeroQueue)
+// Consolidated from earlier 5-lines-per-level spam.
+
+const LEVEL_UNLOCKS = {
+  2:  { tag: 'BREACH',         summary: 'BREACH protocol online',           contexts: ['breach'] },
+  3:  { tag: 'UPGRADES + REP', summary: 'UPGRADES tab + Reputation system', contexts: ['upgrades_tab'] },
+  4:  { tag: 'BARTER + INTEL', summary: 'BARTER trading + Intel upgrades',   contexts: ['barter', 'intel'] },
+  5:  { tag: 'AGENCY',         summary: 'AGENCY recruiting active',          contexts: ['agency', 'runners'] },
+  6:  { tag: 'DAILIES',        summary: 'Daily contracts + Deep channels',   contexts: ['daily'] },
+  7:  { tag: 'PROTOCOLS',      summary: 'Operation protocols + Overclock',   contexts: ['protocol', 'overclock'] },
+  8:  { tag: 'DISTRICTS',      summary: 'District map unlocked',             contexts: ['district'] },
+  9:  { tag: 'DEEP_SIPHON',    summary: 'Deep siphon protocol ready',        contexts: ['deep_siphon'] },
+  10: { tag: 'AI_SUBROUTINE',  summary: 'AI subroutine + manual cooling',    contexts: ['ai_subroutine', 'manual_cool'] },
+  12: { tag: 'DARK_MARKET',    summary: 'Dark market access granted',        contexts: ['dark_market'] },
+};
+
+export function checkLevelUp(state) {
   const needed = xpRequired(state.level);
   if (state.xp < needed) return state;
-  
+
+  const newLevel = state.level + 1;
   let next = {
     ...state,
-    level: state.level + 1,
+    level: newLevel,
     xp:    state.xp - needed,
-    log:   addLog(state.log, `:: LEVEL UP → LEVEL ${state.level + 1}`),
   };
-  
-  // LEVEL 2: Breach odomknutý
-  if (next.level === 2) {
-    next = addZero(next, 'level_2');
-    next = addContext(next, 'breach');
-    next = { ...next, log: addLog(next.log, ':: BREACH_PROTOCOL_UNLOCKED :: New infiltration vectors available.') };
+
+  // ZERO dialogue (queued separately, rate-limited)
+  next = addZero(next, `level_${newLevel}`);
+
+  const unlock = LEVEL_UNLOCKS[newLevel];
+  if (unlock) {
+    // Push toast — visible persistent state-change notification
+    const toastQueue = [...(next.milestoneToastQueue ?? [])];
+    toastQueue.push({
+      id:     `LEVEL_${newLevel}`,
+      title:  `LEVEL ${newLevel} // ${unlock.tag}`,
+      flavor: unlock.summary,
+      ts:     Date.now(),
+    });
+
+    // Single consolidated log line
+    next = {
+      ...next,
+      milestoneToastQueue: toastQueue,
+      log: addLog(next.log, `:: LEVEL ${newLevel} :: ${unlock.summary}`),
+    };
+
+    // Apply CONTEXT messages (legacy info — kept but not added to log)
+    for (const ctxKey of (unlock.contexts ?? [])) {
+      const ctx = state.contextSeen ?? [];
+      if (!ctx.includes(ctxKey) && CONTEXT_MSG[ctxKey]) {
+        next = { ...next, contextSeen: [...ctx, ctxKey] };
+      }
+    }
+  } else {
+    // No special unlock — just a quiet level up log
+    next = { ...next, log: addLog(next.log, `:: LEVEL ${newLevel}`) };
   }
-  
-  // LEVEL 3: Upgrades tab + Reputation hint
-  if (next.level === 3) {
-    next = addZero(next, 'level_3');
-    next = addContext(next, 'upgrades_tab');
-    next = { ...next, log: addLog(next.log, ':: UPGRADE_TERMINAL_ONLINE :: System enhancements now accessible.') };
-    next = { ...next, log: addLog(next.log, ':: SYSTEM_HINT :: Reputation builds through siphons, barters, and node captures.') };
+
+  // Achievements that fire on level up
+  if (newLevel === 5 && !(next.everBustedThisRun ?? false)) {
+    next = checkAchievement(next, 'UNTOUCHABLE');
   }
-  
-  // LEVEL 4: Barter + Intel upgrades
-  if (next.level === 4) {
-    next = addZero(next, 'level_4');
-    next = addContext(next, 'barter');
-    next = addContext(next, 'intel');
-    next = { ...next, log: addLog(next.log, ':: BARTER_NETWORK_UNLOCKED :: Trade data chips for reputation.') };
-    next = { ...next, log: addLog(next.log, ':: INTEL_ASSETS_ONLINE :: Reputation-based upgrades available.') };
-  }
-  
-  // LEVEL 5: Agency + Runners
-  if (next.level === 5) {
-    next = addZero(next, 'level_5');
-    next = addContext(next, 'agency');
-    next = addContext(next, 'runners');
-    next = { ...next, log: addLog(next.log, ':: AGENCY_TERMINAL_ACTIVE :: You can now recruit operatives.') };
-    if (!(next.everBustedThisRun ?? false)) next = checkAchievement(next, 'UNTOUCHABLE');
-  }
-  
-  // LEVEL 6: Daily challenges + Deep siphon hint
-  if (next.level === 6) {
-    next = addZero(next, 'level_6');
-    next = addContext(next, 'daily');
-    next = { ...next, log: addLog(next.log, ':: DAILY_CONTRACTS_AVAILABLE :: Check OPS for rotating objectives.') };
-    next = { ...next, log: addLog(next.log, ':: DEEP_CHANNELS_UNLOCKED :: New extraction protocols available.') };
-  }
-  
-  // LEVEL 7: Protocols + Overclock
-  if (next.level === 7) {
-    next = addZero(next, 'level_7');
-    next = addContext(next, 'protocol');
-    next = addContext(next, 'overclock');
-    next = { ...next, log: addLog(next.log, ':: OPERATION_PROTOCOLS_ONLINE :: Activate tactical modifiers in OPS tab.') };
-    next = { ...next, log: addLog(next.log, ':: OVERCLOCK_MODULE_DETECTED :: +2 Bandwidth at extreme risk.') };
-    
-    // Random event
+
+  // Level 7 random event preserved (gameplay-meaningful, not noise)
+  if (newLevel === 7) {
     if (Math.random() > 0.5) {
       const bonus = 2000;
-      next = { ...next, gold: next.gold + bonus, log: addLog(next.log, `:: SIGNAL_WINDFALL :: Anonymous crypto transfer detected. +${bonus} CR`) };
+      next = {
+        ...next,
+        gold: next.gold + bonus,
+        log: addLog(next.log, `:: SIGNAL_WINDFALL :: +${bonus} CR transferred from anonymous source.`),
+      };
     } else {
-      next = { ...next, heat: Math.min(100, next.heat + 15), log: addLog(next.log, ':: HEAT_SPIKE :: THE EYE is watching. Heat +15.') };
+      next = {
+        ...next,
+        heat: Math.min(100, next.heat + 15),
+        log: addLog(next.log, ':: HEAT_SPIKE :: THE EYE is watching. Heat +15.'),
+      };
     }
   }
-  
-  // LEVEL 8: District (map expansion)
-  if (next.level === 8) {
-    next = addZero(next, 'level_8');
-    next = addContext(next, 'district');
-    next = { ...next, log: addLog(next.log, ':: DISTRICT_MAP_UNLOCKED :: New zones available for infiltration.') };
-  }
-  
-  // LEVEL 9: Deep siphon
-  if (next.level === 9) {
-    next = addZero(next, 'level_8'); // Pozor: malo by byť 'level_9' - oprav podľa ZERO objektu
-    next = addContext(next, 'deep_siphon');
-    next = { ...next, log: addLog(next.log, ':: DEEP_SIPHON_PROTOCOL_READY :: Extract high-value corporate data.') };
-  }
-  
-  // LEVEL 10: AI Subroutine + Manual cool
-  if (next.level === 10) {
-    next = addZero(next, 'level_10');
-    next = addContext(next, 'ai_subroutine');
-    next = addContext(next, 'manual_cool');
-    next = { ...next, log: addLog(next.log, ':: AI_SUBROUTINE_INSTALLED :: Automatic heat suppression every 60 minutes.') };
-    next = { ...next, log: addLog(next.log, ':: MANUAL_COOL_AVAILABLE :: Spend stamina to accelerate item cooldowns.') };
-  }
-  
-  // LEVEL 12: Dark market
-  if (next.level === 12) {
-    next = addContext(next, 'dark_market');
-    next = { ...next, log: addLog(next.log, ':: DARK_MARKET_ACCESS_GRANTED :: Sell entire inventory at 60% value.') };
-  }
-  
-  // LEVEL 15: Mainframe hack
-  if (next.level === 15) {
-    next = addContext(next, 'mainframe');
-    next = { ...next, log: addLog(next.log, ':: MAINFRAME_HACK_UNLOCKED :: Ultimate data extraction protocol.') };
-  }
-  
-  return checkLevelUp(next);
+
+  return next;
 }
 
 const IDLE_EFFICIENCY = 0.6;
 
-function applyIncome(state, amount) {
+// ── THE EYE AWAKENING ────────────────────────────────────────────────────
+// Grandmapocalypse-style shift. Triggers at prestige 3 OR 10M+ total gold.
+// Makes the game DARKER — new events, ambient, ZERO tone shifts.
+export function isEyeAwakened(state) {
+  if ((state.prestige ?? 0) >= 3) return true;
+  if ((state.totalGoldEarned ?? 0) >= 10_000_000) return true;
+  if (state.eyeAwakenedManual) return true;
+  return false;
+}
+
+// ─── HUNTER SYSTEM (H4.5-H4.8) ─────────────────────────────────────────────
+// Progress bar builds up when heat > 85. Hunter spawns at 60.
+// Counter: LAY LOW below 60 heat clears. Silence (lvl 10+) invisible without NET_SCANNER.
+function updateHunterSystem(next) {
+  const heat = next.heat ?? 0;
+  const lvl = next.level ?? 1;
+
+  // LAY LOW counter
+  if (next.hunterActive && next.layLowActive && heat < 60) {
+    return {
+      ...next,
+      hunterActive: false,
+      hunterProgress: 0,
+      hunterLocation: null,
+      silenceActive: false,
+      log: addLog(next.log, ':: HUNTER_LOST :: Signal scrambled. They lost you.'),
+    };
+  }
+
+  // Build progress if heat high
+  if (heat > 85 && !next.hunterActive) {
+    let progress = (next.hunterProgress ?? 0) + 1;
+    if (progress >= 60) {
+      // Hunter spawn
+      const isSilence = lvl >= 10 && Math.random() < 0.25;
+      return {
+        ...next,
+        hunterActive: true,
+        hunterProgress: 60,
+        hunterLocation: next.district,
+        silenceActive: isSilence,
+        log: addLog(next.log,
+          isSilence
+            ? ':: [!!!] SILENCE :: Named hunter deployed. No visible trace without NET_SCANNER.'
+            : `:: [!] HUNTER_DEPLOYED :: Heat signature locked to ${next.district}.`
+        ),
+      };
+    }
+    return { ...next, hunterProgress: progress };
+  }
+
+  // Decay progress when heat low
+  if (heat < 50 && (next.hunterProgress ?? 0) > 0 && !next.hunterActive) {
+    return { ...next, hunterProgress: Math.max(0, (next.hunterProgress ?? 0) - 1) };
+  }
+
+  // Active hunter random agent capture events (every ~30s)
+  if (next.hunterActive && Math.random() < 0.033) {
+    const hunterDistrict = next.hunterLocation;
+    const victims = (next.activeMissions ?? [])
+      .filter(m => {
+        const hex = (typeof AETHERIA_MAP !== 'undefined') ? AETHERIA_MAP[m.hexId] : null;
+        return hex && hex.districtId === hunterDistrict;
+      });
+    if (victims.length > 0 && Math.random() < 0.25) {
+      const victim = victims[Math.floor(Math.random() * victims.length)];
+      const agent = (next.agents || []).find(a => a.id === victim.agentId);
+      if (agent) {
+        const hunterName = next.silenceActive ? 'SILENCE' : 'HUNTER';
+        return {
+          ...next,
+          agents: next.agents.map(a =>
+            a.id === victim.agentId ? { ...a, status: 'CAPTURED', fatigue: 100, stress: 100 } : a
+          ),
+          activeMissions: next.activeMissions.filter(m => m.agentId !== victim.agentId),
+          log: addLog(next.log, `[!!!] ${hunterName} :: ${agent.name} captured at ${victim.hexId}!`),
+        };
+      }
+    }
+  }
+
+  return next;
+}
+
+export function applyIncome(state, amount) {
   const idleMult = state.isIdle ? IDLE_EFFICIENCY : 1.0;
   const mult   = state.prestigeMultiplier ?? 1;
   const earned = Math.round(amount * mult);
+  const newGold = state.gold + earned;
+  const peakGold = Math.max(state.peakGold ?? 0, newGold);
   return {
-    gold:            state.gold + earned,
+    gold:            newGold,
+    peakGold,
     totalGoldEarned: (state.totalGoldEarned ?? 0) + earned,
     runGoldEarned:   (state.runGoldEarned   ?? 0) + earned,
     _earned:         earned,
@@ -1032,15 +1476,48 @@ function checkAchievement(state, id) {
 }
 
 // Applies combo + critical multipliers to a raw item
+// ── COMBO STATE MACHINE ──────────────────────────────────────────────────
+// Replaces simple comboMult with 3-state push-your-luck system.
+//   STEALTH    (combo 0–5)   — 1.0–1.2x reward,  +0 heat penalty
+//   AGGRESSIVE (combo 6–15)  — 1.5–2.0x reward,  +0.5 heat per click
+//   BURNING    (combo 16+)   — 3.0x reward,      +2.0 heat per click → BUST risk
+//
+// Anti-autoclicker: continuous clicking enters BURNING within ~16 actions and
+// flushes heat to 100 within 10 more actions → BUSTED. The optimal strategy is
+// to push to BURNING for big rewards, then STOP and let combo timer expire.
+//
+// Pure derivation — does not mutate state. Returns { state, mult, heatPenalty,
+// nextCombo, isCritical, finalGold }.
+export function getComboState(comboCount) {
+  if (comboCount >= 16) return 'BURNING';
+  if (comboCount >= 6)  return 'AGGRESSIVE';
+  return 'STEALTH';
+}
+
+export function getComboMult(comboCount) {
+  if (comboCount >= 16) return 3.0;
+  if (comboCount >= 6)  return 1.5 + Math.min((comboCount - 6) * 0.05, 0.5); // 1.5 → 2.0
+  return 1.0 + Math.min(comboCount * 0.04, 0.20);                              // 1.0 → 1.2
+}
+
+export function getComboHeatPenalty(comboCount) {
+  if (comboCount >= 16) return 2.0;
+  if (comboCount >= 6)  return 0.5;
+  return 0;
+}
+
 function applyComboAndCrit(rawItem, state) {
   const comboCount = state.comboCount ?? 0;
-  const comboMult = 1 + Math.min(comboCount * 0.02, 0.40);
-  const isCritical = Math.random() < 0.05;
-  const finalGold  = isCritical
+  const comboMult  = getComboMult(comboCount);
+  const critBonus     = state.reveals?.CRIT_LENS ? 0.05 : 0;
+  const mapCritBonus  = calculateMapModifiers(state).critChanceBonus ?? 0;
+  const isCritical    = Math.random() < (0.05 + critBonus + mapCritBonus);
+  const finalGold     = isCritical
     ? Math.round(rawItem.gold * comboMult * 10)
     : Math.round(rawItem.gold * comboMult);
-  const newCombo = comboCount + (isCritical ? 5 : 1);
-  return { item: { ...rawItem, gold: finalGold }, isCritical, newCombo };
+  // Crit gives +5 to combo. Otherwise +1. Caps at 30 (no infinite scaling).
+  const nextCombo = Math.min(30, comboCount + (isCritical ? 5 : 1));
+  return { item: { ...rawItem, gold: finalGold }, isCritical, newCombo: nextCombo };
 }
 
 // ── PLAYER ACTIONS ────────────────────────────────────────────────────────────
@@ -1056,7 +1533,9 @@ export function siphon(state) {
 	}
 
 	const distMult = DISTRICTS[state.district]?.lootMultiplier ?? 1;
-	const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
+	// Rookie buff: first 5 levels of first run get half heat per action
+	const rookieHeatMult = ((state.prestige ?? 0) === 0 && (state.level ?? 1) < 1) ? 0.5 : 1.0;
+	const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1) * rookieHeatMult;
 	const heatPenalty     = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
 	const bountyPen       = (state.bountyActive ?? false) ? 0.20 : 0;
 	const proto           = PROTOCOL_DEFS[state.activeProtocol ?? 'NONE'] ?? {};
@@ -1082,7 +1561,7 @@ export function siphon(state) {
     let failState = {
         ...state,
         stamina:    newStamina,
-        heat:       Math.min(100, state.heat + heatFail),
+        ...addHeatLocal(state, heatFail),
         comboCount: 0,
         comboTimer: 0,                                             // ← NOVÉ
         comboShatterKey: (state.comboShatterKey ?? 0) + ((state.comboCount ?? 0) > 0 ? 1 : 0),  // ← NOVÉ
@@ -1105,7 +1584,7 @@ export function siphon(state) {
 	const rawItem      = makeItem(loot, distMult, state.upgrades, state.intelUpgrades ?? {});
 	const prefixHeatMult = rawItem.prefixHeatMult ?? 1;
 	const prefixXpMult   = rawItem.prefixXpMult   ?? 1;
-	const heatOk       = Math.round(5 * heatMult * protoHeatMult * prefixHeatMult);
+	const heatOk       = Math.round(5 * heatMult * protoHeatMult * prefixHeatMult + getComboHeatPenalty(state.comboCount ?? 0));
 	
 	// 🔥 UNIVERZÁLNY XP VÝPOČET 🔥
 	const distXpMult   = DISTRICTS[state.district]?.xpMultiplier ?? 1;
@@ -1125,11 +1604,11 @@ export function siphon(state) {
 	let next = checkLevelUp({
 		...state,
 		stamina:            newStamina,
-		heat:               Math.min(100, state.heat + heatOk),
+		...addHeatLocal(state, heatOk),
 		xp:                 state.xp + finalXp,
-		...addRep(state, 1),
+		...addRep(state, state.prestigePerks?.TITHE ? 2 : 1),
 		comboCount:         newCombo,
-    comboTimer:         4000,          // ← NOVÉ
+    comboTimer:         state.prestigePerks?.GHOST_NERVE ? 6000 : 4000,  // GHOST_NERVE perk
     totalActions: (state.totalActions ?? 0) + 1,
     lastLogTier:        'success',     // ← NOVÉ
 		heatSpikeTimer:     isHighValue ? 10 : (state.heatSpikeTimer ?? 0),
@@ -1177,7 +1656,9 @@ export function breach(state) {
 	}
 
 	const distMult = DISTRICTS[state.district]?.lootMultiplier ?? 1;
-	const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
+	// Rookie buff: first 5 levels of first run get half heat per action
+	const rookieHeatMult = ((state.prestige ?? 0) === 0 && (state.level ?? 1) < 1) ? 0.5 : 1.0;
+	const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1) * rookieHeatMult;
 	const heatPenalty     = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
 	const bountyPen       = (state.bountyActive ?? false) ? 0.20 : 0;
 	const proto           = PROTOCOL_DEFS[state.activeProtocol ?? 'NONE'] ?? {};
@@ -1197,7 +1678,7 @@ export function breach(state) {
 		return applyBustedCheck({
 			...state,
 			stamina:    newStamina,
-			heat:       Math.min(100, state.heat + heatFail),
+			...addHeatLocal(state, heatFail),
 			comboCount: 0,
       comboTimer: 0,                                             // ← NOVÉ
       comboShatterKey: (state.comboShatterKey ?? 0) + ((state.comboCount ?? 0) > 0 ? 1 : 0),  // ← NOVÉ
@@ -1212,7 +1693,7 @@ export function breach(state) {
 	const rawItem      = makeItem(loot, distMult, state.upgrades, state.intelUpgrades ?? {});
 	const prefixHeatMult = rawItem.prefixHeatMult ?? 1;
 	const prefixXpMult   = rawItem.prefixXpMult   ?? 1;
-	const heatOk       = Math.round(15 * heatMult * protoHeatMult * prefixHeatMult);
+	const heatOk       = Math.round(15 * heatMult * protoHeatMult * prefixHeatMult + getComboHeatPenalty(state.comboCount ?? 0));
 	
 	// 🔥 UNIVERZÁLNY XP VÝPOČET 🔥
 	const distXpMult   = DISTRICTS[state.district]?.xpMultiplier ?? 1;
@@ -1232,11 +1713,11 @@ export function breach(state) {
 	let next = checkLevelUp({
 		...state,
 		stamina:        newStamina,
-		heat:           Math.min(100, state.heat + heatOk),
+		...addHeatLocal(state, heatOk),
 		xp:             state.xp + finalXp,
 		...addRep(state, 3),
 		comboCount:     newCombo,
-    comboTimer:         4000,          // ← NOVÉ
+    comboTimer:         state.prestigePerks?.GHOST_NERVE ? 6000 : 4000,  // GHOST_NERVE perk
     totalActions: (state.totalActions ?? 0) + 1,
     lastLogTier:        'success',     // ← NOVÉ
 		heatSpikeTimer: isHighValue ? 10 : (state.heatSpikeTimer ?? 0),
@@ -1270,7 +1751,9 @@ export function deepSiphon(state) {
 	}
 
 	const distMult = DISTRICTS[state.district]?.lootMultiplier ?? 1;
-	const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
+	// Rookie buff: first 5 levels of first run get half heat per action
+	const rookieHeatMult = ((state.prestige ?? 0) === 0 && (state.level ?? 1) < 1) ? 0.5 : 1.0;
+	const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1) * rookieHeatMult;
 	const heatPenalty     = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
 	const bountyPen       = (state.bountyActive ?? false) ? 0.20 : 0;
 	const proto           = PROTOCOL_DEFS[state.activeProtocol ?? 'NONE'] ?? {};
@@ -1292,7 +1775,7 @@ export function deepSiphon(state) {
 		return applyBustedCheck({
 			...state,
 			stamina:    newStamina,
-			heat:       Math.min(100, state.heat + heatFail),
+			...addHeatLocal(state, heatFail),
 			comboCount: 0,
       comboTimer: 0,                                             // ← NOVÉ
       comboShatterKey: (state.comboShatterKey ?? 0) + ((state.comboCount ?? 0) > 0 ? 1 : 0),  // ← NOVÉ
@@ -1307,7 +1790,7 @@ export function deepSiphon(state) {
 	const rawItem      = makeItem(loot, distMult, state.upgrades, state.intelUpgrades ?? {});
 	const prefixHeatMult = rawItem.prefixHeatMult ?? 1;
 	const prefixXpMult   = rawItem.prefixXpMult   ?? 1;
-	const heatOk       = Math.round(8 * heatMult * protoHeatMult * prefixHeatMult);
+	const heatOk       = Math.round(8 * heatMult * protoHeatMult * prefixHeatMult + getComboHeatPenalty(state.comboCount ?? 0));
 	
 	// 🔥 UNIVERZÁLNY XP VÝPOČET 🔥
 	const distXpMult   = DISTRICTS[state.district]?.xpMultiplier ?? 1;
@@ -1327,11 +1810,11 @@ export function deepSiphon(state) {
 	let next = checkLevelUp({
 		...state,
 		stamina:        newStamina,
-		heat:           Math.min(100, state.heat + heatOk),
+		...addHeatLocal(state, heatOk),
 		xp:             state.xp + finalXp,
 		...addRep(state, 2),
 		comboCount:     newCombo,
-    comboTimer:         4000,          // ← NOVÉ
+    comboTimer:         state.prestigePerks?.GHOST_NERVE ? 6000 : 4000,  // GHOST_NERVE perk
     totalActions: (state.totalActions ?? 0) + 1,
     lastLogTier:        'success',     // ← NOVÉ
 		heatSpikeTimer: isHighValue ? 10 : (state.heatSpikeTimer ?? 0),
@@ -1364,7 +1847,9 @@ export function mainframeHack(state) {
 	}
 
 	const distMult = DISTRICTS[state.district]?.lootMultiplier ?? 1;
-	const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1);
+	// Rookie buff: first 5 levels of first run get half heat per action
+	const rookieHeatMult = ((state.prestige ?? 0) === 0 && (state.level ?? 1) < 1) ? 0.5 : 1.0;
+	const heatMult        = Math.max(0, 1 - (state.upgrades.signalDampener ?? 0) * 0.1) * rookieHeatMult;
 	const heatPenalty     = state.heat >= 81 ? 0.40 : state.heat >= 61 ? 0.25 : state.heat >= 31 ? 0.10 : 0;
 	const bountyPen       = (state.bountyActive ?? false) ? 0.20 : 0;
 	const proto           = PROTOCOL_DEFS[state.activeProtocol ?? 'NONE'] ?? {};
@@ -1385,7 +1870,7 @@ export function mainframeHack(state) {
 		return applyBustedCheck({
 			...state,
 			stamina:    newStamina,
-			heat:       Math.min(100, state.heat + heatFail),
+			...addHeatLocal(state, heatFail),
 			comboCount: 0,
       comboTimer: 0,                                             // ← NOVÉ
       comboShatterKey: (state.comboShatterKey ?? 0) + ((state.comboCount ?? 0) > 0 ? 1 : 0),  // ← NOVÉ
@@ -1400,7 +1885,7 @@ export function mainframeHack(state) {
 	const rawItem      = makeItem(loot, distMult, state.upgrades, state.intelUpgrades ?? {});
 	const prefixHeatMult = rawItem.prefixHeatMult ?? 1;
 	const prefixXpMult   = rawItem.prefixXpMult   ?? 1;
-	const heatOk       = Math.round(25 * heatMult * protoHeatMult * prefixHeatMult);
+	const heatOk       = Math.round(25 * heatMult * protoHeatMult * prefixHeatMult + getComboHeatPenalty(state.comboCount ?? 0));
 	
 	// 🔥 UNIVERZÁLNY XP VÝPOČET 🔥
 	const distXpMult   = DISTRICTS[state.district]?.xpMultiplier ?? 1;
@@ -1420,11 +1905,11 @@ export function mainframeHack(state) {
 	let next = checkLevelUp({
 		...state,
 		stamina:        newStamina,
-		heat:           Math.min(100, state.heat + heatOk),
+		...addHeatLocal(state, heatOk),
 		xp:             state.xp + finalXp,
 		...addRep(state, 8),
 		comboCount:     newCombo,
-    comboTimer:         4000,          // ← NOVÉ
+    comboTimer:         state.prestigePerks?.GHOST_NERVE ? 6000 : 4000,  // GHOST_NERVE perk
     totalActions: (state.totalActions ?? 0) + 1,
     lastLogTier:        'success',     // ← NOVÉ
 		heatSpikeTimer: isHighValue ? 10 : (state.heatSpikeTimer ?? 0),
@@ -1445,17 +1930,28 @@ export function mainframeHack(state) {
 }
 
 export function layLow(state) {
-  if (state.bustedLockout > 0)  return state;
-  if (state.layLowActive)       return state;
+  if (state.bustedLockout > 0) return state;
+  if (state.layLowActive) return state;
   // During an active raid, bypass the cooldown so the player can always respond
   if (state.layLowCooldown > 0 && !(state.raidActive ?? false)) return state;
-  let log = addLog(state.log, ':: LAY_LOW ACTIVATED :: HEAT DISPERSAL IN PROGRESS');
+
+  const t = getLayLowTier(state);
+  let log = addLog(state.log, `:: ${t.label} :: COOLING ENGAGED · ${t.duration}s`);
+  
   let extra = {};
   if (state.raidActive) {
-    log   = addLog(log, ':: RAID EVADED :: LAY LOW successful');
+    log = addLog(log, ':: RAID EVADED :: LAY LOW successful');
     extra = { raidActive: false, raidTimer: 0, nextRaidIn: randomRaidInterval() };
   }
-  return { ...state, ...extra, layLowActive: true, layLowTimer: 30, log };
+
+  return { 
+    ...state, 
+    ...extra, 
+    layLowActive: true, 
+    layLowTimer: t.duration, // Dynamický timer namiesto hardcoded 30
+    layLowCooldown: 60,      // Cooldown sa nastavuje tu pri aktivácii
+    log 
+  };
 }
 
 export function sellCooledItems(state) {
@@ -1463,7 +1959,8 @@ export function sellCooledItems(state) {
   if (cold.length === 0) {
     return { ...state, log: addLog(state.log, ':: SELL FAILED — NO COOLED ITEMS IN INVENTORY') };
   }
-  const raw    = cold.reduce((sum, i) => sum + i.gold, 0);
+  const marketLordMult = state.prestigePerks?.MARKET_LORD ? 1.3 : 1;
+  const raw = Math.round(cold.reduce((sum, i) => sum + i.gold, 0) * marketLordMult);
   const income = applyIncome(state, raw);
   let next = {
     ...state,
@@ -1484,7 +1981,9 @@ export function sellSingleItem(state, instanceId) {
       return { ...state, log: addLog(state.log, `:: SELL FAILED — ${item.id} STILL HOT`) };
   }
 
-  const income = applyIncome(state, item.gold);
+  const marketLordMult = state.prestigePerks?.MARKET_LORD ? 1.3 : 1;
+  const adjusted = Math.round(item.gold * marketLordMult);
+  const income = applyIncome(state, adjusted);
   let next = {
       ...state,
       gold:            income.gold,
@@ -1606,7 +2105,7 @@ export function barter(state) {
   return {
     ...state,
     inventory:      newInventory,
-    ...addRep(state, 1),
+    ...addRep(state, state.prestigePerks?.TITHE ? 2 : 1),
     barterCooldown: BARTER_CD,
     log: barterLog,
   };
@@ -1803,6 +2302,8 @@ export function prestige(state) {
 		dailyFeedback: null,
 		lastTickTime: Date.now(),
 		runGoldEarned: 0,
+		runPlayTime: 0,
+    respecUsed: false,
 		district: 'Z4',
 		siphonsWithoutBust: 0,
 		everBustedThisRun: false,
@@ -1874,11 +2375,42 @@ export function buyPrestigePerk(state, perkId) {
 	};
 }
 
+// Respec: refund all perks. Cost 10K CR × perkCount (scales with commitment).
+// Once per prestige run (flag reset on next prestige).
+export function respecPrestigePerks(state) {
+  if (state.respecUsed) {
+    return { ...state, log: addLog(state.log, '[!] RESPEC_BLOCKED :: Already used this run.') };
+  }
+  const owned = Object.keys(state.prestigePerks ?? {});
+  if (owned.length === 0) {
+    return { ...state, log: addLog(state.log, '[!] RESPEC_SKIPPED :: No perks to refund.') };
+  }
+  const cost = 10000 * owned.length;
+  if ((state.gold ?? 0) < cost) {
+    return { ...state, log: addLog(state.log, `[!] INSUFFICIENT_FUNDS :: Respec costs ${cost.toLocaleString()} CR`) };
+  }
+
+  // Refund points (each perk its original cost)
+  let refundedPoints = 0;
+  for (const perkId of owned) {
+    const def = PRESTIGE_PERK_DEFS.find(d => d.id === perkId);
+    refundedPoints += (def?.cost ?? 1);
+  }
+
+  return {
+    ...state,
+    gold: state.gold - cost,
+    prestigePoints: (state.prestigePoints ?? 0) + refundedPoints,
+    prestigePerks: {},
+    respecUsed: true,
+    log: addLog(state.log, `:: RESPEC :: ${owned.length} perks refunded (${refundedPoints} points). -${cost.toLocaleString()} CR`),
+  };
+}
+
 // ── OFFLINE PROGRESS ──────────────────────────────────────────────────────────
 
 export function calculateOfflineProgress(state, nowMs) {
   const rawElapsed = (nowMs - (state.lastTickTime ?? nowMs)) / 1000;
-  // ZMENENÝ RIADOK: Základ sú 4 hodiny (14400s) + každá úroveň Safehouse pridá 2 hodiny (7200s)
   const maxOffline = 14400 + ((state.upgrades?.safehouse ?? 0) * 7200);
   const elapsed    = Math.min(rawElapsed, maxOffline);
   
@@ -1959,11 +2491,21 @@ export function calculateHeatFlow(state) {
   const corpMoleMult = (state.intelUpgrades?.corpMole ?? 0) >= 1 ? 2 : 1;
   const mapHeatBonus = calculateMapModifiers(state).heatDecayBonus ?? 0;
 
+  // Rookie buff: first level of first run get 2× decay so onboarding
+  // doesn't punish players who can only do 1 siphon before forced wait.
+  const lvl = state.level ?? 1;
+  const prestige = state.prestige ?? 0;
+  const rookieMult = (prestige === 0 && lvl < 1) ? 2.0 : 1.0;
+
   // Base natural decay (always negative = cooling)
-  let delta = -((distDecayBase + traceBonus + mapHeatBonus) * corpMoleMult);
+  const ghostFadeMult = state.prestigePerks?.GHOST_FADE ? 1.25 : 1;
+  let delta = -((distDecayBase + traceBonus + mapHeatBonus) * corpMoleMult * ghostFadeMult * rookieMult);
 
   // Lay low accelerates cooling
-  if (state.layLowActive) delta = -2;
+  if (state.layLowActive) {
+    const t = getLayLowTier(state);
+    delta = -t.decayPerSec;
+  }
 
   // Heat spike active (high-value loot grabbed recently) = heat rises
   if ((state.heatSpikeTimer ?? 0) > 0 && !state.layLowActive) {
@@ -1976,6 +2518,11 @@ export function calculateHeatFlow(state) {
   const maxBw = 1 + (state.intelUpgrades?.serverRacks ?? 0) + overclockBonus;
   const overload = Math.max(0, usedBw - maxBw);
   if (overload > 0) delta += overload * 0.8;
+
+  // Hot zone penalty — current district is hot → +0.3 heat/s
+  if ((state.hotZones ?? {})[state.district]) {
+    delta += 0.3;
+  }
 
   return delta; // heat change per second (positive = heating, negative = cooling)
 }
@@ -1996,7 +2543,25 @@ export function tick(state) {
         comboCount: comboExpired ? 0 : next.comboCount,
         comboShatterKey: comboExpired ? (next.comboShatterKey ?? 0) + 1 : next.comboShatterKey,
     };
-}
+  }
+
+  // ── ZERO QUEUE DISPENSER ──────────────────────────────────────────
+  // Rate-limit ZERO log lines so player isn't spammed (e.g. 4 lines in 1s
+  // when first siphon coincides with quantum drop + first capture).
+  // Max 1 line per 2.5s — rest waits in queue.
+  const ZERO_DISPENSE_MS = 2500;
+  if ((next.zeroQueue?.length ?? 0) > 0) {
+    const lastEmit = next.lastZeroEmit ?? 0;
+    if (nowMs - lastEmit >= ZERO_DISPENSE_MS) {
+      const [first, ...rest] = next.zeroQueue;
+      next = {
+        ...next,
+        zeroQueue: rest,
+        lastZeroEmit: nowMs,
+        log: addLog(next.log, first),
+      };
+    }
+  }
 
 	// ── AFK / IDLE DETECTION ──
 	const IDLE_TIMEOUT = DEV_MODE ? 10000 : 1200000; // 20 minút (1 min v DEV)
@@ -2087,6 +2652,7 @@ export function tick(state) {
   if (next.overclockCooldown > 0) {
     next.overclockCooldown = Math.max(0, next.overclockCooldown - 1);
   }
+  
 
   // ═══════════════════════════════════════════════════════════════
   // ── SYSTEM_OVERRIDE_PROTOCOL (OVERCLOCK & OVERLOAD) ──
@@ -2153,10 +2719,54 @@ export function tick(state) {
   const newHeat = Math.max(0, Math.min(100, next.heat + heatDelta));
   next = { ...next, heat: parseFloat(newHeat.toFixed(2)) };
 
+  // If passive heat (overload, hot zone, spike) pushed us to 100, trigger bust.
+  // Without this, "BUSTING · 0% RESIST" displays forever with nothing happening.
+  if (next.heat >= 100 && (next.bustedLockout ?? 0) === 0 && !next.layLowActive) {
+    next = applyBustedCheck(next);
+  }
+
+  // ── DISTRICT HEAT (H4.1) — each district cools independently ────────────
+  // Lokálny heat stúpa pri akciách v danom districte (v reducer case).
+  // Tu v tick() každý district kvapká o ~1/s (trochu rýchlejšie než global).
+  {
+    const dh = { ...(next.districtHeat ?? {}) };
+    let changed = false;
+    for (const [did, h] of Object.entries(dh)) {
+      if (h > 0) {
+        dh[did] = Math.max(0, h - 1);
+        changed = true;
+      }
+    }
+    if (changed) next = { ...next, districtHeat: dh };
+
+    // HOT ZONE detection — 10 consecutive ticks above 80
+    const hotTicks = { ...(next.districtHeatHotTicks ?? {}) };
+    const hot = { ...(next.hotZones ?? {}) };
+    for (const did of Object.keys(dh)) {
+      if ((dh[did] ?? 0) > 80) {
+        hotTicks[did] = (hotTicks[did] ?? 0) + 1;
+        if (hotTicks[did] >= 10 && !hot[did]) {
+          hot[did] = true;
+          next.log = addLog(next.log, `:: HOT_ZONE :: ${did} marked — +15% heat gen here`);
+        }
+      } else {
+        hotTicks[did] = 0;
+        if (hot[did] && (dh[did] ?? 0) < 40) {
+          delete hot[did];
+          next.log = addLog(next.log, `:: HOT_ZONE_CLEARED :: ${did} cooled`);
+        }
+      }
+    }
+    next = { ...next, districtHeatHotTicks: hotTicks, hotZones: hot };
+  }
+
   // Heat spike timer countdown (separate from flow calculation)
   if ((next.heatSpikeTimer ?? 0) > 0) {
       next = { ...next, heatSpikeTimer: next.heatSpikeTimer - 1 };
   }
+
+  // ── HUNTER SYSTEM (H4.5-H4.8) ──────────────────────────────────────
+  next = updateHunterSystem(next);
 
   // ── BOUNTY SYSTEM ──────────────────────────────────────────────────
   if (!(next.bountyActive ?? false) && next.heat >= 80) {
@@ -2174,7 +2784,7 @@ export function tick(state) {
 
   // ── NODE RECLAIM LOGIC (Útok systému - len ak sme IDLE) ──
   // Decay sme už vyriešili vyššie, tu riešime len Reclaim (útoky)
- if (!next.isIdle) {
+  if (!next.isIdle) {
     let reclaiming = { ...(next.reclaiming || {}) };
     let captured = [...(next.capturedHexes || [])];
     let stability = { ...(next.nodeStability || {}) };
@@ -2242,6 +2852,10 @@ export function tick(state) {
 	};
 
 	const idleMult = next.isIdle ? IDLE_EFFICIENCY : 1.0; // V offline režime len 60% zisku
+  const idleFocusThreshold = next.reveals?.IDLE_FOCUS ? 30 : 60;
+	const secSinceClick = Math.floor((nowMs - (next.lastInteractionTime || nowMs)) / 1000);
+	const idleFocusBonus = (!next.isIdle && secSinceClick >= idleFocusThreshold) ? Math.min(3, 1 + (secSinceClick - idleFocusThreshold) / 120) : 1;
+	// Linear ramp: threshold → 1x, +120s → 2x, +240s → 3x. Capped at 3x.
 
 	// ── 1. AGENT TICK SYSTEM (Zárobok, Únava, HW Overclock) ────────────────
 	const hwLvl = next.upgrades?.hwOverclock ?? 0;
@@ -2314,7 +2928,8 @@ export function tick(state) {
         }
 
         // Zárobok a Heat per Agent
-        totalAgentIncome += basePayouts[updated.role] * synergyMult * guildMult * specGoldMult * traitGoldMult * idleMult;
+        const tyrantMult = (next.prestigePerks?.TYRANT && (next.agents?.length ?? 0) >= 10) ? 2 : 1;
+        totalAgentIncome += basePayouts[updated.role] * synergyMult * guildMult * specGoldMult * traitGoldMult * idleMult * idleFocusBonus * tyrantMult;
         totalAgentHeat += (baseHeats[updated.role] * hwHeatMult * specHeatMult * stealthMult) + traitHeatAdder;
 
 				// Únava a XP
@@ -2350,7 +2965,7 @@ export function tick(state) {
 	// ── MAP PASSIVE GOLD ───────────────────────────────────────────────
 	const mapPassiveGold = calculateMapModifiers(next).passiveGold;
 	if (mapPassiveGold > 0) {
-		const inc = applyIncome(next, mapPassiveGold * idleMult); // Pridaný idleMult!
+		const inc = applyIncome(next, mapPassiveGold * idleMult * idleFocusBonus);
 		next = {
 			...next,
 			gold: inc.gold,
@@ -2419,7 +3034,7 @@ export function tick(state) {
 				layLowActive: false,
 				layLowTimer: 0,
 				layLowCooldown: 60,
-				log: addLog(next.log, ':: LAY_LOW COMPLETE :: cooldowns accelerated')
+				log: addLog(next.log, ':: LAY_LOW COMPLETE :: COOLDOWNS ACCELERATED')
 			};
 		} else {
 			next = { ...next, layLowTimer: remaining };
@@ -2542,7 +3157,52 @@ export function tick(state) {
 		}
 	}
 
-	return { ...next, lastTickTime: nowMs };
+  // ── THE EYE AWAKENING TRIGGER ────────────────────────────────
+	if (!next.eyeAwakenedTriggered && isEyeAwakened(next)) {
+		next = { ...next, eyeAwakenedTriggered: true };
+		next = addZero(next, 'eye_awakened');
+	}
+
+	// Eye-awakened gameplay shifts: higher heat passive, more events
+	if (isEyeAwakened(next)) {
+		// Ambient implant whispers — stay in log (NOT NEURAL_LINK), without [ZERO >>] prefix
+		// These are environmental flavor, not narrative beats.
+		if ((next.lastTickTime ?? 0) > 0 && Math.random() < 0.003) {
+			const whispers = [
+				':: it\'s watching. right now.',
+				':: don\'t trust the pattern.',
+				':: the silence isn\'t empty.',
+				':: once you see it, you can\'t unsee it.',
+			];
+			next = {
+				...next,
+				log: addLog(next.log, whispers[Math.floor(Math.random() * whispers.length)]),
+				lastLogTier: 'zero',
+			};
+		}
+	}
+
+	// ── MILESTONE CHECK ──────────────────────────────────────────────
+	const newMilestones = checkMilestones(next);
+	if (newMilestones.length > 0) {
+		const nowTs = Date.now();
+		const updatedMilestones = { ...(next.milestones ?? {}) };
+		let log = next.log;
+		const toastQueue = [...(next.milestoneToastQueue ?? [])];
+		for (const def of newMilestones) {
+			updatedMilestones[def.id] = nowTs;
+			toastQueue.push({ id: def.id, title: def.title, flavor: def.flavor, ts: nowTs });
+			log = addLog(log, `:: ★ MILESTONE :: ${def.title}`);
+		}
+		next = { ...next, milestones: updatedMilestones, milestoneToastQueue: toastQueue, log };
+	}
+
+	return {
+		...next,
+		lastTickTime: nowMs,
+		totalPlayTime: (next.totalPlayTime ?? 0) + 1,
+		runPlayTime:   (next.runPlayTime ?? 0) + 1,
+	};
 }
 
 export function checkMissions(state) {
@@ -2564,18 +3224,56 @@ export function checkMissions(state) {
 		
 		let missionSuccess = true;
 
+		// ── TRAIT-BASED MISSION MODIFIERS ─────────────────────────────
+		const agent = (next.agents || []).find(a => a.id === m.agentId);
+		const agentTraits = agent?.traits ?? [];
+
+		// IDEALIST: refuse Z5 corp missions → auto-fail with no penalty
+		if (agentTraits.includes('IDEALIST') && hex.districtId === 'Z5') {
+			missionSuccess = false;
+			next.log = addLog(next.log, `:: ${agent.name} refused the corporate infiltration. Ideals intact.`);
+			// Return agent to ACTIVE (no injury, no capture)
+			next.agents = next.agents.map(a =>
+				a.id === m.agentId ? { ...a, status: 'ACTIVE', fatigue: Math.min(100, (a.fatigue ?? 0) + 10) } : a
+			);
+			return;  // Skip the rest of this forEach iteration
+		}
+
 		// ── SPRACOVANIE AGENTA (Návrat, Únava, Zranenia) ──
 		if (next.agents) {
 			next.agents = next.agents.map(a => {
 				if (a.id === m.agentId) {
 					// 1. Šanca na zlyhanie/katastrofu (Závisí od Heatu)
-					const dangerRoll = Math.random() * 100;
-					const dangerThreshold = (next.heat / 5); // Pri 100 Heat je 20% šanca na prúser
+					let dangerRoll = Math.random() * 100;
+					let dangerThreshold = (next.heat / 5); // Pri 100 Heat je 20% šanca na prúser
+
+					// UNSTABLE: coin flip — +15% or -15% to success chance
+					if ((a.traits ?? []).includes('UNSTABLE')) {
+						const unstableRoll = Math.random();
+						if (unstableRoll < 0.5) {
+							dangerThreshold -= 15; // Safer
+							next.log = addLog(next.log, `:: ${a.name} felt focused. Threat diminished.`);
+						} else {
+							dangerThreshold += 15; // More dangerous
+							next.log = addLog(next.log, `:: ${a.name} lost focus. Threat amplified.`);
+						}
+					}
 					
 					if (dangerRoll < dangerThreshold) {
 						missionSuccess = false;
 						const isCaptured = Math.random() > 0.6; // 40% šanca na zajatie, inak len zranenie
-						
+
+						// Surface fail to splash so player notices without checking log
+						next.missionSplash = {
+							label: hex.label || hex.name || 'UNKNOWN_NODE',
+							runnerType: m.runnerType,
+							gold: 0,
+							xp: 0,
+							failed: true,
+							failReason: isCaptured ? `${a.name} CAPTURED` : `${a.name} INJURED`,
+							timestamp: Date.now()
+						};
+
 						if (isCaptured) {
 							next.log = addLog(next.log, `[!!!] M.I.A. :: ${a.name} WAS CAPTURED AT ${hex.label}!`);
 							return { ...a, status: 'CAPTURED', fatigue: 100, stress: 100 };
@@ -2609,11 +3307,28 @@ export function checkMissions(state) {
 		// ── ODMENY (Len ak misia neskončila katastrofou) ──
 		if (missionSuccess && !(next.capturedHexes || []).includes(m.hexId)) {
 			const mult = hex.lootMultiplier || 1;
-			const goldReward = Math.floor((Math.random() * 5000 + 5000) * mult);
-			const xpReward = Math.floor(1500 * mult);
+			const rewardMult = m.rewardMult ?? 1;
 
-			next.gold += goldReward;
+			// CYNIC: +10% CR but -1 REP per mission
+			const cynicMult = agentTraits.includes('CYNIC') ? 1.1 : 1;
+			// EMPIRE perk: +50% capture CR
+			const empireMult = next.prestigePerks?.EMPIRE ? 1.5 : 1;
+
+			const rawGold = Math.floor((Math.random() * 5000 + 5000) * mult * rewardMult * cynicMult * empireMult);
+			const xpReward = Math.floor(1500 * mult * rewardMult);
+
+			if (agentTraits.includes('CYNIC')) {
+				next.reputation = Math.max(0, (next.reputation ?? 0) - 1);
+				next.log = addLog(next.log, `:: ${agent.name}: "I don't do this for the cause." -1 REP`);
+			}
+
+			const inc = applyIncome(next, rawGold);
+			next.gold = inc.gold;
+			next.totalGoldEarned = inc.totalGoldEarned;
+			next.runGoldEarned = inc.runGoldEarned;
 			next.xp += xpReward;
+			const goldReward = inc._earned;
+			next = checkLevelUp(next);
 
 			next.capturedHexes = [...(next.capturedHexes || []), m.hexId];
 			next.mapDiscovery = [...new Set([

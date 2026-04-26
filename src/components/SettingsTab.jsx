@@ -13,6 +13,70 @@ import {
 } from '../gameLogic.js';
 import { audioManager } from '../audio/AudioManager.js';
 
+function ScientificToggle() {
+    const [enabled, setEnabled] = useState(() =>
+      typeof window !== 'undefined' && localStorage.getItem('sg_scientific') === '1'
+    );
+    const toggle = () => {
+      const next = !enabled;
+      setEnabled(next);
+      audioManager.tab(); // Pridaný zvuk
+      localStorage.setItem('sg_scientific', next ? '1' : '0');
+      // Force re-render of display components
+      window.dispatchEvent(new Event('sg-display-pref-changed'));
+    };
+    return (
+      <button
+        onClick={toggle}
+        style={{
+          background: enabled ? COLORS.purple : 'transparent',
+          color: enabled ? '#000' : COLORS.purple,
+          border: `1px solid ${COLORS.purple}`,
+          padding: '6px 14px',
+          fontSize: 10, letterSpacing: '0.2em', fontWeight: 800,
+          fontFamily: 'inherit',
+          cursor: 'pointer',
+        }}
+      >
+        {enabled ? '◆ ON' : '○ OFF'}
+      </button>
+    );
+  }
+
+function CompactUiToggle() {
+    // Default: ON (compact). Stored as '0' when explicitly disabled.
+    const [enabled, setEnabled] = useState(() => {
+      if (typeof window === 'undefined') return true;
+      return localStorage.getItem('sg_compact_ui') !== '0';
+    });
+    const toggle = () => {
+      const next = !enabled;
+      setEnabled(next);
+      audioManager.tab(); // Pridaný zvuk
+      localStorage.setItem('sg_compact_ui', next ? '1' : '0');
+      // Force re-render of UI
+      window.dispatchEvent(new Event('sg-display-pref-changed'));
+      // Reload to apply tab visibility cleanly (some panels hooked into mount logic)
+      setTimeout(() => window.location.reload(), 120);
+    };
+    return (
+      <button
+        onClick={toggle}
+        style={{
+          background: enabled ? COLORS.cyan : 'transparent',
+          color: enabled ? '#000' : COLORS.cyan,
+          border: `1px solid ${COLORS.cyan}`,
+          padding: '6px 14px',
+          fontSize: 10, letterSpacing: '0.2em', fontWeight: 800,
+          fontFamily: 'inherit',
+          cursor: 'pointer',
+        }}
+      >
+        {enabled ? '◆ ON' : '○ OFF'}
+      </button>
+    );
+  }
+
 export function SettingsTab({ state, dispatch }) {
   const [audioVolume, setAudioVolume] = useState(audioManager.masterVolume ?? 0.4);
   const [importInput, setImportInput] = useState('');
@@ -26,6 +90,7 @@ export function SettingsTab({ state, dispatch }) {
 
   const onExport = () => {
     localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+    audioManager.tab(); // Pridaný zvuk
     setExportString(exportSave(state));
     setTimeout(() => exportRef.current?.select(), 50);
   };
@@ -101,9 +166,35 @@ export function SettingsTab({ state, dispatch }) {
         >
           ◉ TEST SOUND
         </BBtn>
-      </Panel>
+        </Panel>
 
-      {/* ─── ACHIEVEMENTS ──────────────────────────── */}
+    {/* ─── DISPLAY PREFERENCES ───────────────────── */}
+    <Panel accent={COLORS.purple} title="DISPLAY" dense>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div>
+        <div style={{ fontSize: 10, color: COLORS.amberDim, letterSpacing: '0.15em' }}>
+            COMPACT_UI
+        </div>
+        <div style={{ fontSize: 9, color: COLORS.amberDim, fontStyle: 'italic', marginTop: 2, opacity: 0.7 }}>
+            Hide panels until they're relevant. Cleaner first hour.
+        </div>
+        </div>
+        <CompactUiToggle />
+    </div>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+        <div style={{ fontSize: 10, color: COLORS.amberDim, letterSpacing: '0.15em' }}>
+            SCIENTIFIC_NOTATION
+        </div>
+        <div style={{ fontSize: 9, color: COLORS.amberDim, fontStyle: 'italic', marginTop: 2, opacity: 0.7 }}>
+            Show large numbers as 4.2e6 instead of 4.2M
+        </div>
+        </div>
+        <ScientificToggle />
+    </div>
+    </Panel>
+
+    {/* ─── ACHIEVEMENTS ──────────────────────────── */}
       <Panel
         accent={COLORS.gold}
         title="ACHIEVEMENTS"

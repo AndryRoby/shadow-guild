@@ -6,19 +6,20 @@ import {
   Activity, ChevronUp, Users, ShieldOff, Star, Eye, Shield, MessageSquare, User
 } from 'lucide-react';
 import {
-  siphon, breach, deepSiphon, mainframeHack, layLow, sellCooledItems, sellSingleItem, darkMarket, barter, manualCool, decrypt,
-  buyUpgrade, buyIntelUpgrade, hireRunner, setDistrict, warpTime, prestige, tick,
-  xpRequired, heatStatus, effectiveSuccessRate, calculateOfflineProgress,
-  UPGRADE_DEFS, INTEL_UPGRADE_DEFS, CHALLENGE_DEFS, ACHIEVEMENT_DEFS, PRESTIGE_PERK_DEFS,
+  checkLevelUp, siphon, breach, deepSiphon, mainframeHack, layLow, sellCooledItems, sellSingleItem, darkMarket, barter, manualCool, decrypt,
+  buyUpgrade, buyIntelUpgrade, hireRunner, setDistrict, warpTime, prestige, tick, addLog, buyReveal, REVEAL_DEFS,
+  xpRequired, heatStatus, effectiveSuccessRate, calculateOfflineProgress, respecPrestigePerks,
+  UPGRADE_DEFS, INTEL_UPGRADE_DEFS, CHALLENGE_DEFS, ACHIEVEMENT_DEFS, PRESTIGE_PERK_DEFS, checkTutorialDialogues,
   getUpgradeCost, getRunnerCost, isUnlocked, buyPrestigePerk, setProtocol, purgeLogs, setRunnerSpec,
-  DEV_MODE, SAVE_KEY, exportSave, importSave, ITEM_FLAVOR, PROTOCOL_DEFS, counterHack,
-  canCapture, captureHex, calculateMapModifiers, getInitialDiscovery, getMapDataForVis, getIntelUpgradeCost, severConnection,
+  DEV_MODE, SAVE_KEY, exportSave, importSave, ITEM_FLAVOR, PROTOCOL_DEFS, counterHack, isEyeAwakened,
+  canCapture, calculateMapModifiers, getInitialDiscovery, getMapDataForVis, getIntelUpgradeCost, severConnection, applyIncome
 } from './gameLogic.js';
 import {
   CITY_MAP as AETHERIA_MAP,
   DISTRICTS as AETHERIA_DISTRICTS,
   MAP_STATS,
 } from '../CITY_MAP.js';
+import { getTabBadges, getUIVisibility, getVisibleTabs  } from './selectors.js';
 import { Panel, Row, Tag, DataBar, BBtn, MiniStat, fmt, COLORS } from './design/primitives.jsx';
 import { Sidebar } from './components/Sidebar.jsx';
 import { InventoryPanel } from './components/InventoryPanel.jsx';
@@ -28,6 +29,10 @@ import { UpgradesTab } from './components/UpgradesTab.jsx';
 import { NetworkTab } from './components/NetworkTab.jsx';
 import { AwakeningTab } from './components/AwakeningTab.jsx';
 import { SettingsTab } from './components/SettingsTab.jsx';
+import { BootSequence } from './components/BootSequence.jsx';
+import { ZeroIntroScreen } from './components/ZeroIntroScreen.jsx';
+import { ZeroOverlay } from './components/ZeroOverlay.jsx';
+
 
 
 const getTimestamp = () => {
@@ -50,7 +55,7 @@ const cn = (...classes) => classes.filter(Boolean).join(' ');
 // ── INITIAL STATE ─────────────────────────────────────────────────────────────
 
 const FRESH_STATE = {
-  saveVersion: 3,
+  saveVersion: 8,
   gold:               0,
   reputation:         0,
   maxReputation:      0,
@@ -132,6 +137,32 @@ const FRESH_STATE = {
   awakaningTabUnlocked: false, // Odomkne Prestige Tab
   shownTips: [],             // Zoznam zobrazených tipov (aby sa neopakovali)
   agentBonds: [],            // Prebudované v Fáze 3
+
+  // ─── PROGRESSION TRACKING ────────────────────────────────
+  peakGold: 0,
+  milestones: {},             // { id: timestamp } — prevents milestone replay
+  milestoneToastQueue: [],    // FIFO — consumed by toast renderer
+  sessionStartTime: Date.now(),
+  totalPlayTime: 0,
+  runPlayTime: 0,
+  eyeAwakenedTriggered: false,  // One-time trigger flag for awakening event
+  // ─── DISTRICT HEAT (H4.1) ─────────────────────────────────
+  districtHeat: { Z1: 0, Z2: 0, Z3: 0, Z4: 0, Z5: 0, Z6: 0, Z7: 0 },
+  hotZones: {},              // { districtId: true } — zones that have been hot for 10+ ticks
+  districtHeatHotTicks: {},  // Internal counter per district
+  // ─── HUNTER SYSTEM (H4.5) ─────────────────────────────────
+  hunterActive: false,
+  hunterProgress: 0,           // 0-60, at 60 → hunter spawns
+  hunterLocation: null,        // district id where hunter operates
+  silenceActive: false,        // Named hunter "Silence" — invisible without NET_SCANNER
+  silenceDefeated: 0,          // Times killed (for prestige-ish tracking)
+  zeroDialoguesSeen: [],
+  zeroQueue:          [],
+  lastZeroEmit:       0,
+  zeroDialoguesSeen:  [],
+  reveals: {},
+  zeroLastMessage: null,
+  zeroHistory: [],
 };
 
 const DEV_START = {
@@ -151,62 +182,45 @@ const DEV_START = {
 function loadInitialState() {
   try {
     const saved = localStorage.getItem(SAVE_KEY);
-    if (saved) {
-      let parsed = JSON.parse(saved);
+    if (!saved) return DEV_MODE ? DEV_START : FRESH_STATE;
 
-      // Migračná logika: Ak save nemá verziu alebo je verzia 0, spravíme update na 1
-      if (!parsed.saveVersion || parsed.saveVersion < 1) {
-        parsed = { ...FRESH_STATE, ...parsed, saveVersion: 1 };
-      }
-      if (parsed.saveVersion < 2) {
-        parsed = {
-          ...parsed,
-          comboTimer: 0,
-          comboShatterKey: 0,
-          lastLogTier: 'normal',
-          saveVersion: 2,
-        };
-      }
-      if (parsed.saveVersion < 3) {
-        parsed = {
-            ...parsed,
-            totalActions: parsed.totalActions ?? 0,
-            saveVersion: 3,
-        };
-    }
+    const parsed = JSON.parse(saved);
 
-      // Vrátime zlúčený stav
-      return {
-        ...FRESH_STATE, // Základné defaulty
-        ...parsed,      // Hodnoty zo savu, ktoré prepíšu defaulty
-        
-        // Zabezpečenie, že aj pri starej štruktúre sa hĺbkové objekty správne spoja
-        feedback: null,
-        runGoldEarned:  parsed.runGoldEarned ?? parsed.totalGoldEarned ?? 0,
-        zeroMessages:   parsed.zeroMessages ?? [],
-        maxReputation:  Math.max(parsed.maxReputation ?? 0, parsed.reputation ?? 0),
-        
-        runners:       { ...FRESH_STATE.runners,    ...(parsed.runners || {}) },
-        runnerTick:    { ...FRESH_STATE.runnerTick, ...(parsed.runnerTick || {}) },
-        upgrades:      { ...FRESH_STATE.upgrades,   ...(parsed.upgrades || {}) },
-        intelUpgrades: { ...FRESH_STATE.intelUpgrades, ...(parsed.intelUpgrades || {}) },
-        runnerXp:      { ...FRESH_STATE.runnerXp,   ...(parsed.runnerXp || {}) },
-        runnerSpec:    { ...FRESH_STATE.runnerSpec,  ...(parsed.runnerSpec || {}) },
+    // Deep merge: spojí hlboké objekty, aby sa nové fieldy nestratili
+    return {
+      // 1. Základ zo všetkých defaultov
+      ...FRESH_STATE,
+      // 2. Prekrytie uloženými dátami
+      ...parsed,
 
-        shownTips: parsed.shownTips ?? [],
-        agentBonds: parsed.agentBonds ?? [],
-        
-        systemScan:    parsed.systemScan ?? FRESH_STATE.systemScan,
-        capturedHexes: parsed.capturedHexes ?? FRESH_STATE.capturedHexes,
-        mapDiscovery:  parsed.mapDiscovery  ?? FRESH_STATE.mapDiscovery,
-      };
-    }
+      // 3. Reset transientného stavu (premenné, ktoré sa nemajú ukladať)
+      feedback: null,
+
+      // 4. Hĺbkový merge pre vnorené objekty (Deep Merge)
+      // Zabezpečí, že ak v novom update pridáš field do objektu, 
+      // existujúci save ho nezmaže, ale doplní si chýbajúce z FRESH_STATE
+      upgrades:      { ...FRESH_STATE.upgrades,      ...(parsed.upgrades || {}) },
+      intelUpgrades: { ...FRESH_STATE.intelUpgrades, ...(parsed.intelUpgrades || {}) },
+      runners:       { ...FRESH_STATE.runners,       ...(parsed.runners || {}) },
+      runnerTick:    { ...FRESH_STATE.runnerTick,    ...(parsed.runnerTick || {}) },
+      runnerXp:      { ...FRESH_STATE.runnerXp,      ...(parsed.runnerXp || {}) },
+      runnerSpec:    { ...FRESH_STATE.runnerSpec,    ...(parsed.runnerSpec || {}) },
+      districtHeat:  { ...FRESH_STATE.districtHeat,  ...(parsed.districtHeat || {}) },
+      hotZones:      { ...FRESH_STATE.hotZones,      ...(parsed.hotZones || {}) },
+      reveals:       { ...(FRESH_STATE.reveals ?? {}), ...(parsed.reveals || {}) },
+      prestigePerks: { ...(FRESH_STATE.prestigePerks ?? {}), ...(parsed.prestigePerks || {}) },
+      systemScan:    { ...FRESH_STATE.systemScan,    ...(parsed.systemScan || {}) },
+      milestones:    { ...FRESH_STATE.milestones,    ...(parsed.milestones || {}) },
+
+      // 5. Konzistentnosť dát
+      maxReputation: Math.max(parsed.maxReputation ?? 0, parsed.reputation ?? 0),
+      runGoldEarned: parsed.runGoldEarned ?? parsed.totalGoldEarned ?? 0,
+      zeroMessages:  parsed.zeroMessages ?? [],
+    };
   } catch (e) {
     console.error("Save corrupted, loading default state:", e);
+    return DEV_MODE ? DEV_START : FRESH_STATE;
   }
-  
-  // Návrat dev alebo fresh stavu ak save neexistuje alebo zlyhal
-  return DEV_MODE ? DEV_START : FRESH_STATE;
 }
 
 // ── GLOBÁLNY HELPER PRE LIEČENIE ──
@@ -244,6 +258,15 @@ function reducer(state, action) {
 		case 'BUY_UPGRADE':       return buyUpgrade(state, action.key);
 		case 'HIRE_RUNNER':       return hireRunner(state, action.runnerType);
 		case 'SET_DISTRICT':      return setDistrict(state, action.district);
+    case 'QUEUE_ZERO_DIALOGUE': {
+			// Push tutorial line(s) into ZERO queue; dispenser in tick() releases
+			// max 1 every 2.5s. seenIds persists tutorial gate state.
+			return {
+				...state,
+				zeroQueue: [...(state.zeroQueue ?? []), ...(action.lines ?? [])],
+				zeroDialoguesSeen: action.seenIds ?? state.zeroDialoguesSeen ?? [],
+			};
+		}
 		case 'WARP_TIME':         return warpTime(state);
 		case 'PRESTIGE': {
       return prestige(state);
@@ -265,6 +288,7 @@ function reducer(state, action) {
 		}
 
 		case 'BUY_PRESTIGE_PERK': return buyPrestigePerk(state, action.perkId);
+    case 'RESPEC_PRESTIGE_PERKS': return respecPrestigePerks(state);
 		case 'SET_PROTOCOL':      return setProtocol(state, action.protocol);
 		case 'PURGE_LOGS':        return purgeLogs(state);
 		case 'COUNTER_HACK':      return counterHack(state);
@@ -332,6 +356,10 @@ function reducer(state, action) {
 				log: [`:: CONNECTION_SEVERED :: Node ${hexId} released manually.`, ...(state.log || [])].slice(0, 50)
 			};
 		}
+
+    case 'BUY_REVEAL': {
+      return buyReveal(state, action.revealId);
+    }
 
 		case 'SECURE_NODE': {
       const { hexId } = action;
@@ -405,6 +433,7 @@ function reducer(state, action) {
     }
 		
 		case 'RANSOM_AGENT': {
+      const t = getTimestamp();
 			if (state.gold < 15000) return state;
 			return {
 				...state,
@@ -502,88 +531,91 @@ function reducer(state, action) {
 		}
 
 		case 'DEPLOY_RUNNER': {
-			const { hexId, agentId } = action;
+			const { hexId, agentId, risk = 'BALANCED' } = action;
 			const hex = AETHERIA_MAP[hexId];
-			
+
 			if (!hex) return state;
-			
-			// 1. Nájdi konkrétneho agenta
+
 			const agent = (state.agents || []).find(a => a.id === agentId);
 			if (!agent || agent.status !== 'ACTIVE') return state;
-			
-			// 2. SIGNAL CHANNELS LIMIT (Miesto Bandwidthu)
+
 			const activeMissionsCount = (state.activeMissions || []).length;
-			const maxMissions = 2 + Math.floor((state.level || 1) / 5); // Základ 2, rastie levelom
-			
+			const maxMissions = 2 + Math.floor((state.level || 1) / 5);
+
 			if (activeMissionsCount >= maxMissions) {
 				return {
 					...state,
 					log: [`[!] :: SIGNAL_LIMIT :: Max ${maxMissions} concurrent infiltrations allowed.`, ...(state.log || [])].slice(0, 50)
 				};
 			}
-			
-			// 3. NÁKLADY (Pôvodná logika: 2000 CR * ZoneMult)
+
+			// ─── RISK TIER MODIFIERS ──────────────────────────────
+			// Inspired by How Many Dudes: choose approach → different outcomes
+			const RISK_PROFILES = {
+				SAFE:       { successBonus: +15, rewardMult: 0.7, heatMult: 0.5, costMult: 1.5, timeMult: 1.3, label: 'SAFE'       },
+				BALANCED:   { successBonus:   0, rewardMult: 1.0, heatMult: 1.0, costMult: 1.0, timeMult: 1.0, label: 'BALANCED'   },
+				AGGRESSIVE: { successBonus: -20, rewardMult: 1.8, heatMult: 1.6, costMult: 0.7, timeMult: 0.7, label: 'AGGRESSIVE' },
+			};
+			const profile = RISK_PROFILES[risk] ?? RISK_PROFILES.BALANCED;
+
 			const zoneScales = { Z4: 1, Z7: 2, Z2: 3, Z3: 4, Z6: 6, Z1: 8, Z5: 15 };
-      const zoneMult = zoneScales[hex.districtId] || 1;
-      const opCost = Math.floor(2000 * zoneMult);
-    
-      if (state.gold < opCost) {
-        return {
-          ...state,
-          log: [`[!] :: INSUFFICIENT_FUNDS :: Need ${opCost.toLocaleString()} CR to deploy`, ...(state.log || [])].slice(0, 50)
-        };
-      }
-    
-      // 4. VÝPOČET ČASU A ÚSPORNOSTI (Novinka: Fatigue Penalty)
-      const speedMods = {
-        streetRunner: 1.5, dataThief: 1.0, infiltrator: 0.5,
-        fixer: 0.8, shadowBroker: 0.3
-      };
-    
-      const baseTime = hex.captureTime || 45;
-      
-      // Novinka: Unavený agent je pomalší (1% únavy = +0.5% času)
-      const fatiguePenalty = 1 + (agent.fatigue * 0.005);
-      
-      // Výpočet finálneho času: (Base * Zone * Speed * Fatigue) + Heat
-      const finalSeconds = Math.round(
-        (baseTime * zoneMult) * (speedMods[agent.role] || 1) * fatiguePenalty + (state.heat * 0.7)
-      );
-    
-      const baseChance = 80;
-      const heatPenalty = Math.floor(state.heat / 5);
-      const successChance = Math.max(10, baseChance - heatPenalty);
-    
-      // 5. ZMENA STAVU: Odpočítanie peňazí, nastavenie agenta na ON_MISSION
-      const updatedAgents = state.agents.map(a => 
-        a.id === agentId ? { ...a, status: 'ON_MISSION' } : a
-      );
-    
-      return {
-        ...state,
-        gold: state.gold - opCost,
-        agents: updatedAgents,
-        activeMissions: [
-          ...(state.activeMissions || []),
-          {
-            hexId,
-            agentId, // Ukladáme ID agenta, nie len typ
-            runnerType: agent.role,
-            endTime: Date.now() + (finalSeconds * 1000),
-            startTime: Date.now(),
-            successChance,
-            label: hex.label,
-            opCost
-          }
-        ],
-        // Heat spike pri nasadení (pôvodná logika)
-        heat: Math.min(100, state.heat + Math.round(zoneMult * 2.5)),
-        log: [
-          `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] :: DEPLOYED ${agent.name} [${agent.role.toUpperCase()}] → ${hex.label} [-${opCost} CR | ${finalSeconds}s | ${successChance}%]`,
-          ...(state.log || [])
-        ].slice(0, 50)
-      };
-    }
+			const zoneMult = zoneScales[hex.districtId] || 1;
+			const opCost = Math.floor(2000 * zoneMult * profile.costMult);
+
+			if (state.gold < opCost) {
+				return {
+					...state,
+					log: [`[!] :: INSUFFICIENT_FUNDS :: Need ${opCost.toLocaleString()} CR to deploy`, ...(state.log || [])].slice(0, 50)
+				};
+			}
+
+			const speedMods = {
+				streetRunner: 1.5, dataThief: 1.0, infiltrator: 0.5,
+				fixer: 0.8, shadowBroker: 0.3
+			};
+
+			const baseTime = hex.captureTime || 45;
+			const fatiguePenalty = 1 + (agent.fatigue * 0.005);
+
+			const finalSeconds = Math.round(
+				((baseTime * zoneMult) * (speedMods[agent.role] || 1) * fatiguePenalty + (state.heat * 0.7)) * profile.timeMult
+			);
+
+			const baseChance = 80;
+			const heatPenalty = Math.floor(state.heat / 5);
+			const successChance = Math.max(5, Math.min(95, baseChance - heatPenalty + profile.successBonus));
+
+			const updatedAgents = state.agents.map(a =>
+				a.id === agentId ? { ...a, status: 'ON_MISSION' } : a
+			);
+
+			return {
+				...state,
+				gold: state.gold - opCost,
+				agents: updatedAgents,
+				activeMissions: [
+					...(state.activeMissions || []),
+					{
+						hexId,
+						agentId,
+						runnerType: agent.role,
+						endTime: Date.now() + (finalSeconds * 1000),
+						startTime: Date.now(),
+						successChance,
+						label: hex.label,
+						opCost,
+						risk,
+						rewardMult: profile.rewardMult,
+						heatMult: profile.heatMult,
+					}
+				],
+				heat: Math.min(100, state.heat + Math.round(zoneMult * 2.5 * profile.heatMult)),
+				log: [
+					`[${new Date().toLocaleTimeString('en-US', { hour12: false })}] :: DEPLOYED ${agent.name} [${profile.label}] → ${hex.label} [-${opCost} CR | ${finalSeconds}s | ${successChance}%]`,
+					...(state.log || [])
+				].slice(0, 50)
+			};
+		}
 
 		// (Pôvodný CAPTURE_HEX si necháme, použije ho 'tick' po dokončení misie)
 		case 'CAPTURE_HEX': {
@@ -593,24 +625,41 @@ function reducer(state, action) {
 
 			const newCaptured = [...(state.capturedHexes ?? []), hexId];
 			const newDiscovery = [...new Set([...(state.mapDiscovery ?? []), hexId, ...(hex.connections ?? [])])];
-			
+
 			const mult = hex.lootMultiplier || 1;
-			const goldReward = Math.floor((Math.random() * 5000 + 5000) * mult);
+			const rawGold = Math.floor((Math.random() * 5000 + 5000) * mult);
 			const repReward = Math.floor(25 * mult);
-			const xpReward = Math.floor(1500 * mult); 
-			
+			const xpReward = Math.floor(1500 * mult);
+
+			const inc = applyIncome(state, rawGold);
 			const t = getTimestamp();
 
-			return {
+			const afterCapture = {
 				...state,
-				gold: state.gold + goldReward,
+				gold: inc.gold,
+				totalGoldEarned: inc.totalGoldEarned,
+				runGoldEarned: inc.runGoldEarned,
 				reputation: (state.reputation || 0) + repReward,
 				xp: (state.xp || 0) + xpReward,
 				capturedHexes: newCaptured,
 				mapDiscovery: newDiscovery,
-				log: [`[${t}] :: VAULT BREACHED :: ${hex.label} :: +${goldReward.toLocaleString()} CR, +${xpReward} XP`, ...(state.log || [])].slice(0, 50),
+				log: [`[${t}] :: VAULT BREACHED :: ${hex.label} :: +${inc._earned.toLocaleString()} CR, +${xpReward} XP`, ...(state.log || [])].slice(0, 50),
 			};
+
+			return checkLevelUp(afterCapture);
 		}
+
+    // Reducer addition
+    case 'DISMISS_ZERO_OVERLAY': {
+      if (!state.zeroLastMessage) return state;
+      return {
+        ...state,
+        zeroLastMessage: { ...state.zeroLastMessage, seen: true },
+        zeroHistory: (state.zeroHistory ?? []).map(m =>
+          m.id === state.zeroLastMessage.id ? { ...m, seen: true } : m
+        ),
+      };
+    }
 
     case 'USER_ACTIVE': {
       const t = getTimestamp();
@@ -637,6 +686,15 @@ function reducer(state, action) {
 		
 		case 'APPLY_OFFLINE': {
 			const { earnedGold, heatAfter, elapsed } = action.payload;
+			// Silent update if no runners earned anything AND elapsed < 10min.
+			// Prevents log spam like "OFFLINE +227s :: RUNNERS +0 CR" for early game / fresh start.
+			if (earnedGold <= 0 && elapsed < 600) {
+				return {
+					...state,
+					heat:         heatAfter,
+					lastTickTime: Date.now(),
+				};
+			}
 			const t = getTimestamp();
 			return {
 				...state,
@@ -669,6 +727,10 @@ function reducer(state, action) {
 		case 'TICK': return tick(state);
 		default:     return state;
     case 'CLEAR_SPLASH': return { ...state, missionSplash: null };
+    case 'CONSUME_MILESTONE_TOAST': {
+      const q = state.milestoneToastQueue ?? [];
+      return { ...state, milestoneToastQueue: q.slice(1) };
+    }
 	}
 }
 
@@ -744,19 +806,38 @@ function Bar({ pct, variant = 'default', thin = false }) {
   );
 }
 
-function Tab({ label, active, onClick, disabled = false, className = '' }) {
+function Tab({ label, active, onClick, disabled = false, className = '', badge = null }) {
   return (
-    <button 
+    <button
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
       className={cn(
-        'tab', 
+        'tab',
         active && 'tab-active',
         disabled && 'opacity-40 cursor-not-allowed',
         className
       )}
+      style={{ position: 'relative' }}
     >
       {label}
+      {badge && !disabled && (
+        <span style={{
+          position: 'absolute',
+          top: 4, right: 4,
+          minWidth: 14, height: 14,
+          padding: '0 4px',
+          background: badge.color,
+          color: '#000',
+          fontSize: 9, fontWeight: 800,
+          letterSpacing: '0.05em',
+          borderRadius: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: `0 0 6px ${badge.color}`,
+          animation: badge.pulse ? 'borderPulseAmber 1.4s ease-in-out infinite' : undefined,
+        }}>
+          {badge.count ?? '●'}
+        </span>
+      )}
     </button>
   );
 }
@@ -1409,7 +1490,7 @@ function OfflinePopup({ report, onDismiss }) {
         </div>
 
         <div className="text-xs text-muted italic mb-18 pt-12 border-t border-surface-high">
-          [ZERO &gt;&gt;] The city didn't stop while you were gone.
+          [ZERO &gt;&gt;] the city didn't stop while you were gone.
         </div>
 
         <button onClick={onDismiss} className="btn btn-amber w-full text-center">
@@ -1425,116 +1506,7 @@ function OfflinePopup({ report, onDismiss }) {
 // 3. MAIN APP STATE & EFFECTS
 // ==========================================
 
-// --- BOOT & INTRO SCREENS ---
 
-const BOOT_LINES = [
-  { text: 'LOADING_KERNEL...',                    zero: false },
-  { text: 'DECRYPTING_IDENTITY...',               zero: false },
-  { text: 'ESTABLISHING_SECURE_CHANNEL...',       zero: false },
-  { text: '[ZERO >>] Welcome, Operative. They are watching.', zero: true  },
-];
-
-function BootScreen({ onDone }) {
-  const [visibleCount, setVisibleCount] = useState(0);
-  const onDoneRef = useRef(onDone);
-  onDoneRef.current = onDone;
-
-  useEffect(() => {
-    if (visibleCount < BOOT_LINES.length) {
-      const t = setTimeout(() => {
-        audioManager.bootBeep();
-        setVisibleCount(v => v + 1);
-      }, 800);
-      return () => clearTimeout(t);
-    }
-    const t = setTimeout(() => onDoneRef.current(), 2000);
-    return () => clearTimeout(t);
-  }, [visibleCount]);
-
-  return (
-    <div className="boot-screen">
-      <div className="boot-screen-inner">
-        {BOOT_LINES.map((line, i) => (
-          <div key={i} className={cn('boot-line', line.zero && 'zero', i >= visibleCount && 'hidden')}>
-            {line.text}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const ZERO_INTRO_LINES = [
-  "Aether-Biotech owns this city.",
-  "Every camera. Every transaction. Every breath.",
-  "You're the only one who sees it.",
-];
-
-function ZeroIntroScreen({ onDone }) {
-  const [visibleCount, setVisibleCount] = useState(0);
-  const [showBegin,    setShowBegin]    = useState(false);
-  const onDoneRef = useRef(onDone);
-  onDoneRef.current = onDone;
-
-  useEffect(() => {
-    if (visibleCount < ZERO_INTRO_LINES.length) {
-      const t = setTimeout(() => {
-        audioManager.zeroLine();
-        setVisibleCount(v => v + 1);
-      }, 1500);
-      return () => clearTimeout(t);
-    }
-    const t = setTimeout(() => setShowBegin(true), 800);
-    return () => clearTimeout(t);
-  }, [visibleCount]);
-
-  return (
-    <div className="boot-screen">
-      <div className="boot-intro-wrap">
-        <div className="boot-screen-inner">
-          {ZERO_INTRO_LINES.map((line, i) => (
-            <div key={i} className={cn('boot-line zero', i >= visibleCount && 'hidden')}>
-              {line}
-            </div>
-          ))}
-        </div>
-        <div className="boot-begin-wrap">
-          <button
-            className={cn('boot-begin-btn', !showBegin && 'hidden')}
-            onClick={() => {
-              audioManager.beginClick();
-              setTimeout(() => onDoneRef.current(), 200);
-            }}
-          >
-            [ BEGIN ]
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── ZERO TYPEWRITER LOG ENTRY ─────────────────────────────────────────────────
-function ZeroLogEntry({ text }) {
-  const [displayed, setDisplayed] = useState('');
-  const [done, setDone] = useState(false);
-  useEffect(() => {
-    setDisplayed('');
-    setDone(false);
-    let i = 0;
-    const id = setInterval(() => {
-      i++;
-      setDisplayed(text.slice(0, i));
-      if (i >= text.length) { clearInterval(id); setDone(true); }
-    }, 18);
-    return () => clearInterval(id);
-  }, [text]);
-  return (
-    <div className="log-entry text-zero-message">
-      {displayed}{!done && <span className="animate-pulse">_</span>}
-    </div>
-  );
-}
 
 // ── AGENT CARD ────────────────────────────────────────────────────────────────
 function AgentCard({ agent, dispatch, gold }) {
@@ -1709,6 +1681,10 @@ export default function App() {
     if (!intro || !done) return 'INTRO';
     return 'GAME';
   });
+  const [showBoot, setShowBoot] = useState(() => {
+    try { return localStorage.getItem('sg_boot_seen') !== '1'; }
+    catch { return false; }
+  });
   const [activeTab, setActiveTab] = useState(() => {
     const resetTab = localStorage.getItem('sg_reset_tab');
     if (resetTab) { localStorage.removeItem('sg_reset_tab'); return resetTab; }
@@ -1837,6 +1813,175 @@ export default function App() {
     state.prestigePerks, 
     srCycle, dtCycle, ifCycle, fxCycle, sbCycle
   ]);
+
+
+  // ==========================================
+   // 4. RENDERERS (Sub-functions)
+   // ==========================================
+
+  const effectiveMaxStamina = 100 + (state.upgrades.neuralBoost ?? 0) * 10;
+  const maxInventory = calcMaxInventory(state.upgrades);
+  const xpNeeded    = xpRequired(state.level);
+  const xpPct       = (state.xp / xpNeeded) * 100;
+  const staminaPct  = (state.stamina / effectiveMaxStamina) * 100;
+  const heatRound   = Math.round(state.heat);
+  const heatStat    = heatStatus(heatRound);
+  const invFull     = state.inventory.length >= maxInventory;
+  const isBlocked   = state.bustedLockout > 0 || state.layLowActive;
+
+  const coldItems   = state.inventory.filter(i => !i.isHot);
+  const coldCount   = coldItems.length;
+  const coldValue   = coldItems.reduce((s, i) => s + i.gold, 0);
+  const allValue    = Math.floor(state.inventory.reduce((s, i) => s + i.gold, 0) * 0.6);
+
+  // Dark Market premenné
+  const dmUnlocked = isUnlocked(state, 'dark_market');
+  const dmBusy = state.darkMarketCooldown > 0;
+  const dmDisabled = isBlocked || !dmUnlocked || dmBusy || state.inventory.length === 0;
+
+  // 🔥 DYNAMICKÝ COOLDOWN PRE UI (ukáže správny čas)
+  const mapModsDark = calculateMapModifiers(state);
+  const baseDarkMarketCd = 7200;
+  const cdReductionFromMap = mapModsDark.darkMarketCd || 0;
+  const darkExchangeReduction = ((state.intelUpgrades?.darkExchange ?? 0) >= 1) ? 1800 : 0;
+  const actualDarkMarketCd = Math.max(0, baseDarkMarketCd + cdReductionFromMap - darkExchangeReduction);
+  const cdHours = Math.floor(actualDarkMarketCd / 3600);
+  const cdMinutes = Math.floor((actualDarkMarketCd % 3600) / 60);
+
+  const runGoldEarned   = state.runGoldEarned ?? 0;
+  const canPrestige = state.level >= 10 && (state.runGoldEarned ?? 0) >= 100000;
+  const prestigePoints   = state.prestigePoints ?? 0;
+  const prestigePerks    = state.prestigePerks ?? {};
+  const activeProtocol   = state.activeProtocol ?? 'NONE';
+  const activeProtoDef   = PROTOCOL_DEFS[activeProtocol] ?? null;
+  const siphonCost      = prestigePerks.GHOST_STEP ? 8 : 10;
+  const eyeReveal       = !!prestigePerks.EYE_REVEAL;
+
+  
+
+  const hasNetScanner = (state.intelUpgrades?.netScanner ?? 0) >= 1;
+  const tabBadges = useMemo(() => getTabBadges(state), [state]);
+  const heat = Math.round(state.heat);
+  const siphonChance     = hasNetScanner ? Math.round(effectiveSuccessRate(0.70, state.level, 0.03, heat, state.upgrades.ghostProtocol ?? 0) * 100) : null;
+  const breachChance     = hasNetScanner ? Math.round(effectiveSuccessRate(0.55, state.level, 0.04, heat) * 100) : null;
+  const deepSiphonChance = hasNetScanner ? Math.round(effectiveSuccessRate(0.65, state.level, 0.03, heat) * 100) : null;
+  const mainframeChance  = hasNetScanner ? Math.round(effectiveSuccessRate(0.35, state.level, 0.03, heat) * 100) : null;
+
+  const heatColor =
+    heatRound >= 81 ? '#ef4444' :
+    heatRound >= 61 ? '#f97316' :
+    heatRound >= 31 ? '#eab308' : 'var(--amber)';
+
+  {/* ── PRIDAJ TÝCHTO PÁR RIADKOV PRED RETURN ── */}
+  const usedBw = (state.capturedHexes?.length || 0) + (state.activeMissions?.length || 0);
+  const overclockBonus = state.overclockActive ? 2 : 0;
+  const maxBw = 1 + (state.intelUpgrades?.serverRacks || 0) + overclockBonus;
+  const overload = Math.max(0, usedBw - maxBw);
+
+  const comboCount  = state.comboCount ?? 0;
+  const comboPct    = Math.min(comboCount * 0.01, 0.20);
+  const comboHigh   = comboCount >= 10;
+  const comboGlowClass =
+    comboCount >= 20 ? 'combo-glow-max' :
+    comboCount >= 15 ? 'combo-glow-high' :
+    comboCount >= 5  ? 'combo-glow-low'  : '';
+  const comboTextClass =
+    comboCount >= 15 ? 'text-gold' :
+    comboHigh        ? 'text-amber' : 'text-muted';
+
+  const heatGlitchClass = heatRound >= 95 ? 'heat-extreme' : heatRound >= 80 ? 'heat-critical' : '';
+  const heatDangerClass = heatRound >= 90 ? 'heat-danger' : '';
+  const isMobile   = windowWidth < 768;
+  const heatFilter = heatRound >= 95 ? 'hue-rotate(8deg) saturate(1.8)' : 'none';
+  const scanActive  = state.systemScan?.active ?? false;
+  const scanTimer   = state.systemScan?.timer ?? 0;
+
+  const dc             = state.dailyChallenge;
+  const dcDef          = dc ? CHALLENGE_DEFS.find(d => d.type === dc.type) : null;
+  const dcPct          = dc ? Math.min(100, (dc.current / dc.target) * 100) : 0;
+
+  const dataChipCount  = state.inventory.filter(i => i.id === 'DATA_CHIP').length;
+  const barterReady    = dataChipCount >= 10 && (state.barterCooldown ?? 0) === 0;
+  const barterDisabled = (state.barterCooldown ?? 0) > 0 || dataChipCount < 10 || isBlocked;
+
+  const ENC_KEY_IDS  = ['KEY_ALPHA', 'KEY_BETA', 'KEY_GAMMA', 'KEY_DELTA', 'KEY_EPSILON'];
+  const encKeys      = state.encKeys ?? [];
+  const canDecrypt   = ENC_KEY_IDS.every(k => encKeys.includes(k));
+
+  const aiCycleSecs    = DEV_MODE ? 30 : 3600;
+  const aiRemaining    = aiCycleSecs - (state.aiSubroutineTick ?? 0);
+
+  const hotItems = state.inventory.filter(i => i.isHot);
+  // Najprv najcennejšie (b.gold - a.gold), ak majú rovnakú cenu, tak tie s najkratším časom
+  const coolTarget = hotItems.length > 0
+    ? [...hotItems].sort((a, b) => (b.gold - a.gold) || (a.cooldownRemaining - b.cooldownRemaining))[0]
+    : null;
+
+  // Trainees count (pre AFK overlay a Neural Sim)
+  const traineesCount = (state.agents || []).filter(a => a.status === 'TRAINING').length || 0;
+  
+  const SORT_MODES = ['VALUE', 'TIME', 'COLD'];
+  const sortedInventory = [...state.inventory].sort((a, b) => {
+    if (inventorySort === 'VALUE')    return b.gold - a.gold;
+    if (inventorySort === 'COLD') {
+      if (a.isHot !== b.isHot) return a.isHot ? 1 : -1;
+      return a.cooldownRemaining - b.cooldownRemaining;
+    }
+    if (a.isHot !== b.isHot) return a.isHot ? -1 : 1;
+    return a.cooldownRemaining - b.cooldownRemaining;
+  });
+
+  // Výpočet reálneho zárobku za jeden cyklus (nie za sekundu)
+  const calculateCycleTotal = (runnerKey) => {
+    const activeAgents = (state.agents || []).filter(a => a.role === runnerKey && a.status === 'ACTIVE');
+    if (activeAgents.length === 0) return 0;
+
+    // Base income za JEDEN CYKLUS (napr. 30s pre Street Runnera)
+    const baseIncome = {
+      streetRunner: 30,     // Base 30 CR za 30s = 1 CR/s
+      dataThief: 120,       // Base 120 CR za 120s
+      infiltrator: 900,     // atď.
+      fixer: 3600,
+      shadowBroker: 7200
+    }[runnerKey] || 10;
+
+    let total = 0;
+    
+    // Modifikátory zo štátu (pasívne)
+    const guildMult = state.prestigePerks?.GUILD_MASTER ? 1.25 : 1;
+    const idleMult = state.isIdle ? 0.6 : 1.0;
+
+    activeAgents.forEach(a => {
+      // 1. Level bonus: +15% k base za každý level nad 1
+      const levelMult = 1 + ((a.level || 1) - 1) * 0.15;
+      
+      // 2. Špecifikácia
+      const specMult = a.spec === 'GREEDY' ? 1.5 : 1; // Greedy dáva +50%
+
+      // 3. Výpočet
+      // Base Income * LevelMult * SpecMult * GuildMult * IdleMult
+      total += baseIncome * levelMult * specMult * guildMult * idleMult;
+    });
+
+    // Synergy bonus (5 agentov = +20%)
+    if (activeAgents.length >= 5) total *= 1.2;
+
+    return Math.floor(total);
+  };
+
+  // ── THEME LOGIC ──
+  const themeColor = AETHERIA_DISTRICTS[state.district]?.color ?? '#ffc174';
+      
+  const dynamicThemeStyle = {
+      '--amber': '#ffc174', // Vždy jantárová pre text a UI
+      '--district-color': themeColor, // Špeciálna farba len pre mapu a indikátor
+      '--muted': 'rgba(255,193,116,0.3)',
+  };
+
+  // Nájdeme všetkých runnerov, ktorí majú špecializáciu v stave 'PENDING'
+  const pendingSpecs = Object.entries(state.runnerSpec || {})
+  .filter(([_, spec]) => spec === 'PENDING')
+  .map(([type]) => type);
 
   // ── offline progress on mount ──────────────────────────────────────────────
   // ZVUK: Zazní až po kliknutí na tlačidlo "ACKNOWLEDGE" (nižšie v kóde)
@@ -1977,6 +2122,123 @@ export default function App() {
   .filter(([hexId, stability]) => stability < 30 && hexId !== 'western_warpgate')
   .length;
 
+  // ─── MILESTONE TOASTS ────────────────────────────────────────
+  // Ref-based timer survives re-renders from tick state updates.
+  const [activeMilestone, setActiveMilestone] = useState(null);
+  const milestoneTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (activeMilestone) return;              // Already showing one
+    if (milestoneTimerRef.current) return;    // Timer already queued
+    const queue = state.milestoneToastQueue ?? [];
+    if (queue.length === 0) return;
+
+    const next = queue[0];
+    setActiveMilestone(next);
+    audioManager.zeroLine?.();
+    milestoneTimerRef.current = setTimeout(() => {
+      milestoneTimerRef.current = null;
+      setActiveMilestone(null);
+      dispatch({ type: 'CONSUME_MILESTONE_TOAST' });
+    }, 4000);
+  }, [state.milestoneToastQueue, activeMilestone]);
+
+  // Unmount-only cleanup
+  useEffect(() => () => {
+    if (milestoneTimerRef.current) clearTimeout(milestoneTimerRef.current);
+  }, []);
+
+  // ─── KEYBOARD SHORTCUTS ─────────────────────────────────────
+  // Ref-based so handler doesn't re-register every tick.
+  const shortcutsCtxRef = useRef({ state, specModal, dispatch, dispatchWithSound });
+  shortcutsCtxRef.current = { state, specModal, dispatch, dispatchWithSound };
+
+  useEffect(() => {
+    const handler = (e) => {
+      const tag = e.target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      const { state: s, specModal: sm, dispatch: d, dispatchWithSound: dws } = shortcutsCtxRef.current;
+
+      let consumed = true;
+      switch (e.key) {
+        case '1': setActiveTab('OPERATIONS'); audioManager.tab(); break;
+        case '2': if (isUnlocked(s, 'agency'))        { setActiveTab('AGENCY');     audioManager.tab(); } else consumed = false; break;
+        case '3': if (isUnlocked(s, 'upgrades_tab'))  { setActiveTab('UPGRADES');   audioManager.tab(); } else consumed = false; break;
+        case '4': if (isUnlocked(s, 'district'))      { setActiveTab('NETWORK');    audioManager.tab(); } else consumed = false; break;
+        case '5': if (isUnlocked(s, 'awakening_tab'))     { setActiveTab('AWAKENING');  audioManager.tab(); } else consumed = false; break;
+        case '6': setActiveTab('SETTINGS'); audioManager.tab(); break;
+
+        case 'q': case 'Q': dws({ type: 'SIPHON' }); break;
+        case 'w': case 'W': if (isUnlocked(s, 'breach'))       dws({ type: 'BREACH' });       else consumed = false; break;
+        case 'e': case 'E': if (isUnlocked(s, 'deep_siphon'))  dws({ type: 'DEEP_SIPHON' });  else consumed = false; break;
+        case 'r': case 'R': if (isUnlocked(s, 'mainframe'))    dws({ type: 'MAINFRAME_HACK' }); else consumed = false; break;
+
+        case 'l': case 'L': dws({ type: 'LAY_LOW' }); break;
+
+        case 'Escape':
+          if (sm) setSpecModal(null);
+          else if (s.prestigeModalOpen) d({ type: 'HIDE_PRESTIGE_MODAL' });
+          else consumed = false;
+          break;
+
+        default: consumed = false;
+      }
+      if (consumed) e.preventDefault();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);  // Empty deps — handler uses ref for fresh context
+
+  // ─── DYNAMIC BROWSER TAB TITLE ──────────────────────────────
+  // Updates page title so player sees state from other tabs (Cookie Clicker style).
+  useEffect(() => {
+    const heatTag = heatRound >= 80 ? ` · ⚠${heatRound}%` : '';
+    const bustedTag = (state.bustedLockout ?? 0) > 0 ? ' · BUSTED' : '';
+    document.title = `SHADOW_GUILD · ${fmt(state.gold)} CR${heatTag}${bustedTag}`;
+  }, [state.gold, heatRound, state.bustedLockout]);
+  
+  // E1: chromatic aberration when heat is high
+  useEffect(() => {
+    const heat = state.heat ?? 0;
+    document.body.classList.toggle('heat-glitch',          heat >= 90 && heat < 95);
+    document.body.classList.toggle('heat-glitch-critical', heat >= 95);
+    return () => {
+      // cleanup on unmount only
+    };
+  }, [state.heat]);
+
+  // Tutorial dialogue director — ZERO speaks at milestones
+  useEffect(() => {
+    const { newLines, newSeen } = checkTutorialDialogues(state);
+    if (newLines.length > 0) {
+      dispatch({ type: 'QUEUE_ZERO_DIALOGUE', lines: newLines, seenIds: newSeen });
+    }
+  }, [
+    state.totalActions,
+    state.combo,
+    state.heat,
+    state.bustedLockout,
+    state.level,
+    state.layLowActive,
+    state.agents?.length,
+    state.capturedHexes?.length,
+    state.prestige,
+  ]);
+
+  // Combo state machine — body class for screen effects
+  useEffect(() => {
+    const c = state.comboCount ?? 0;
+    document.body.classList.remove('combo-stealth', 'combo-aggressive', 'combo-burning');
+    if (c >= 16)      document.body.classList.add('combo-burning');
+    else if (c >= 6)  document.body.classList.add('combo-aggressive');
+    else if (c > 0)   document.body.classList.add('combo-stealth');
+    return () => {
+      document.body.classList.remove('combo-stealth', 'combo-aggressive', 'combo-burning');
+    };
+  }, [state.comboCount]);
+
   // ── feedback → visual effects + audio ─────────────────────────────────────
   useEffect(() => {
     if (!state.feedback) return;
@@ -2083,18 +2345,6 @@ export default function App() {
     prevMissionSplash.current = state.missionSplash;
   }, [state.missionSplash]);
 
-  // ── audio + log on feature unlocks ──────────────────────────────────────────
-  useEffect(() => {
-    const features = ['agency', 'upgrades_tab', 'district', 'breach', 'deep_siphon', 'mainframe'];
-    features.forEach(f => {
-      if (isUnlocked(state, f) && !notifiedUnlocks.current.has(f)) {
-        notifiedUnlocks.current.add(f);
-        audioManager.upgrade();
-        dispatch({ type: 'ADD_LOG', text: `:: SYSTEM_UNLOCK :: [${f.toUpperCase()}] — access granted.` });
-      }
-    });
-  }, [state.level, state.maxReputation]);
-
   // ── audio: raid starts — play once ────────────────────────────────────────
   const prevRaidActive = useRef(false);
   useEffect(() => {
@@ -2139,182 +2389,15 @@ export default function App() {
   }, [state.heat >= 95]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ==========================================
-   // 4. RENDERERS (Sub-functions)
-   // ==========================================
-
-  const effectiveMaxStamina = 100 + (state.upgrades.neuralBoost ?? 0) * 10;
-  const maxInventory = calcMaxInventory(state.upgrades);
-  const xpNeeded    = xpRequired(state.level);
-  const xpPct       = (state.xp / xpNeeded) * 100;
-  const staminaPct  = (state.stamina / effectiveMaxStamina) * 100;
-  const heatRound   = Math.round(state.heat);
-  const heatStat    = heatStatus(heatRound);
-  const invFull     = state.inventory.length >= maxInventory;
-  const isBlocked   = state.bustedLockout > 0 || state.layLowActive;
-
-  const coldItems   = state.inventory.filter(i => !i.isHot);
-  const coldCount   = coldItems.length;
-  const coldValue   = coldItems.reduce((s, i) => s + i.gold, 0);
-  const allValue    = Math.floor(state.inventory.reduce((s, i) => s + i.gold, 0) * 0.6);
-
-  // Dark Market premenné
-  const dmUnlocked = isUnlocked(state, 'dark_market');
-  const dmBusy = state.darkMarketCooldown > 0;
-  const dmDisabled = isBlocked || !dmUnlocked || dmBusy || state.inventory.length === 0;
-
-  // 🔥 DYNAMICKÝ COOLDOWN PRE UI (ukáže správny čas)
-  const mapModsDark = calculateMapModifiers(state);
-  const baseDarkMarketCd = 7200;
-  const cdReductionFromMap = mapModsDark.darkMarketCd || 0;
-  const darkExchangeReduction = ((state.intelUpgrades?.darkExchange ?? 0) >= 1) ? 1800 : 0;
-  const actualDarkMarketCd = Math.max(0, baseDarkMarketCd + cdReductionFromMap - darkExchangeReduction);
-  const cdHours = Math.floor(actualDarkMarketCd / 3600);
-  const cdMinutes = Math.floor((actualDarkMarketCd % 3600) / 60);
-
-  const runGoldEarned   = state.runGoldEarned ?? 0;
-  const canPrestige = state.level >= 10 && (state.runGoldEarned ?? 0) >= 100000;
-  const prestigePoints   = state.prestigePoints ?? 0;
-  const prestigePerks    = state.prestigePerks ?? {};
-  const activeProtocol   = state.activeProtocol ?? 'NONE';
-  const activeProtoDef   = PROTOCOL_DEFS[activeProtocol] ?? null;
-  const siphonCost      = prestigePerks.GHOST_STEP ? 8 : 10;
-  const eyeReveal       = !!prestigePerks.EYE_REVEAL;
-
-  
-
-  const hasNetScanner = (state.intelUpgrades?.netScanner ?? 0) >= 1;
-  const heat = Math.round(state.heat);
-  const siphonChance     = hasNetScanner ? Math.round(effectiveSuccessRate(0.70, state.level, 0.03, heat, state.upgrades.ghostProtocol ?? 0) * 100) : null;
-  const breachChance     = hasNetScanner ? Math.round(effectiveSuccessRate(0.55, state.level, 0.04, heat) * 100) : null;
-  const deepSiphonChance = hasNetScanner ? Math.round(effectiveSuccessRate(0.65, state.level, 0.03, heat) * 100) : null;
-  const mainframeChance  = hasNetScanner ? Math.round(effectiveSuccessRate(0.35, state.level, 0.03, heat) * 100) : null;
-
-  const heatColor =
-    heatRound >= 81 ? '#ef4444' :
-    heatRound >= 61 ? '#f97316' :
-    heatRound >= 31 ? '#eab308' : 'var(--amber)';
-
-  {/* ── PRIDAJ TÝCHTO PÁR RIADKOV PRED RETURN ── */}
-  const usedBw = (state.capturedHexes?.length || 0) + (state.activeMissions?.length || 0);
-  const overclockBonus = state.overclockActive ? 2 : 0;
-  const maxBw = 1 + (state.intelUpgrades?.serverRacks || 0) + overclockBonus;
-  const overload = Math.max(0, usedBw - maxBw);
-
-  const comboCount  = state.comboCount ?? 0;
-  const comboPct    = Math.min(comboCount * 0.01, 0.20);
-  const comboHigh   = comboCount >= 10;
-  const comboGlowClass =
-    comboCount >= 20 ? 'combo-glow-max' :
-    comboCount >= 15 ? 'combo-glow-high' :
-    comboCount >= 5  ? 'combo-glow-low'  : '';
-  const comboTextClass =
-    comboCount >= 15 ? 'text-gold' :
-    comboHigh        ? 'text-amber' : 'text-muted';
-
-  const heatGlitchClass = heatRound >= 95 ? 'heat-extreme' : heatRound >= 80 ? 'heat-critical' : '';
-  const heatDangerClass = heatRound >= 90 ? 'heat-danger' : '';
-  const isMobile   = windowWidth < 768;
-  const heatFilter = heatRound >= 95 ? 'hue-rotate(8deg) saturate(1.8)' : 'none';
-  const scanActive  = state.systemScan?.active ?? false;
-  const scanTimer   = state.systemScan?.timer ?? 0;
-
-  const dc             = state.dailyChallenge;
-  const dcDef          = dc ? CHALLENGE_DEFS.find(d => d.type === dc.type) : null;
-  const dcPct          = dc ? Math.min(100, (dc.current / dc.target) * 100) : 0;
-
-  const dataChipCount  = state.inventory.filter(i => i.id === 'DATA_CHIP').length;
-  const barterReady    = dataChipCount >= 10 && (state.barterCooldown ?? 0) === 0;
-  const barterDisabled = (state.barterCooldown ?? 0) > 0 || dataChipCount < 10 || isBlocked;
-
-  const ENC_KEY_IDS  = ['KEY_ALPHA', 'KEY_BETA', 'KEY_GAMMA', 'KEY_DELTA', 'KEY_EPSILON'];
-  const encKeys      = state.encKeys ?? [];
-  const canDecrypt   = ENC_KEY_IDS.every(k => encKeys.includes(k));
-
-  const aiCycleSecs    = DEV_MODE ? 30 : 3600;
-  const aiRemaining    = aiCycleSecs - (state.aiSubroutineTick ?? 0);
-
-  const hotItems = state.inventory.filter(i => i.isHot);
-  // Najprv najcennejšie (b.gold - a.gold), ak majú rovnakú cenu, tak tie s najkratším časom
-  const coolTarget = hotItems.length > 0
-    ? [...hotItems].sort((a, b) => (b.gold - a.gold) || (a.cooldownRemaining - b.cooldownRemaining))[0]
-    : null;
-
-  // Trainees count (pre AFK overlay a Neural Sim)
-  const traineesCount = (state.agents || []).filter(a => a.status === 'TRAINING').length || 0;
-  
-  const SORT_MODES = ['VALUE', 'TIME', 'COLD'];
-  const sortedInventory = [...state.inventory].sort((a, b) => {
-    if (inventorySort === 'VALUE')    return b.gold - a.gold;
-    if (inventorySort === 'COLD') {
-      if (a.isHot !== b.isHot) return a.isHot ? 1 : -1;
-      return a.cooldownRemaining - b.cooldownRemaining;
-    }
-    if (a.isHot !== b.isHot) return a.isHot ? -1 : 1;
-    return a.cooldownRemaining - b.cooldownRemaining;
-  });
-
-  // Výpočet reálneho zárobku za jeden cyklus (nie za sekundu)
-  const calculateCycleTotal = (runnerKey) => {
-    const activeAgents = (state.agents || []).filter(a => a.role === runnerKey && a.status === 'ACTIVE');
-    if (activeAgents.length === 0) return 0;
-
-    // Base income za JEDEN CYKLUS (napr. 30s pre Street Runnera)
-    const baseIncome = {
-      streetRunner: 30,     // Base 30 CR za 30s = 1 CR/s
-      dataThief: 120,       // Base 120 CR za 120s
-      infiltrator: 900,     // atď.
-      fixer: 3600,
-      shadowBroker: 7200
-    }[runnerKey] || 10;
-
-    let total = 0;
-    
-    // Modifikátory zo štátu (pasívne)
-    const guildMult = state.prestigePerks?.GUILD_MASTER ? 1.25 : 1;
-    const idleMult = state.isIdle ? 0.6 : 1.0;
-
-    activeAgents.forEach(a => {
-      // 1. Level bonus: +15% k base za každý level nad 1
-      const levelMult = 1 + ((a.level || 1) - 1) * 0.15;
-      
-      // 2. Špecifikácia
-      const specMult = a.spec === 'GREEDY' ? 1.5 : 1; // Greedy dáva +50%
-
-      // 3. Výpočet
-      // Base Income * LevelMult * SpecMult * GuildMult * IdleMult
-      total += baseIncome * levelMult * specMult * guildMult * idleMult;
-    });
-
-    // Synergy bonus (5 agentov = +20%)
-    if (activeAgents.length >= 5) total *= 1.2;
-
-    return Math.floor(total);
-  };
-
-  // ── THEME LOGIC ──
-  const themeColor = AETHERIA_DISTRICTS[state.district]?.color ?? '#ffc174';
-      
-  const dynamicThemeStyle = {
-      '--amber': '#ffc174', // Vždy jantárová pre text a UI
-      '--district-color': themeColor, // Špeciálna farba len pre mapu a indikátor
-      '--muted': 'rgba(255,193,116,0.3)',
-  };
-
-  // Nájdeme všetkých runnerov, ktorí majú špecializáciu v stave 'PENDING'
-  const pendingSpecs = Object.entries(state.runnerSpec || {})
-  .filter(([_, spec]) => spec === 'PENDING')
-  .map(([type]) => type);
-
-  // ==========================================
   // 5. MAIN RETURN (Layout Grid)
   // ==========================================
 
-  if (appPhase === 'BOOT') return <BootScreen onDone={() => {
+  if (appPhase === 'BOOT') return <BootSequence onComplete={() => {
     localStorage.setItem('sg_booted', '1');
     setAppPhase('INTRO');
   }} />;
 
-  if (appPhase === 'INTRO') return <ZeroIntroScreen onDone={() => {
+  if (appPhase === 'INTRO') return <ZeroIntroScreen onComplete={() => {
     localStorage.setItem('sg_intro', '1');
     localStorage.setItem('sg_first_done', '1');
     setAppPhase('GAME');
@@ -2322,12 +2405,9 @@ export default function App() {
 
   return (
     <div
-      className={`game-root ${heatGlitchClass} ${heatDangerClass}`.trim()}
+    className={`game-root ${heatGlitchClass} ${heatDangerClass} ${isEyeAwakened(state) ? 'eye-awakened' : ''}`.trim()}
       style={{ filter: heatFilter, overflowX: 'hidden', ...dynamicThemeStyle }}
     >
-    
-    {/* ── SCANLINE OVERLAY (Refaktorované na CSS class) ── */}
-        <div className="scanline" />
 
 			{/* ── HEAT TINT (Refaktorované na CSS class) ── */}
         {/* CSS class zabezpečuje position: fixed a pointer-events: none */}
@@ -2454,6 +2534,49 @@ export default function App() {
           document.body
       )}
 
+      {/* ─── MILESTONE TOAST ──────────────────────────── */}
+        {activeMilestone && createPortal(
+          <div style={{
+            position: 'fixed',
+            top: 80,
+            left: 0, right: 0,
+            zIndex: 9999,
+            pointerEvents: 'none',
+            display: 'flex',
+            justifyContent: 'center',
+          }}>
+            <div className="milestone-toast" style={{
+              background: 'rgba(8,8,8,0.95)',
+              border: `2px solid #ffd700`,
+              padding: '16px 28px',
+              boxShadow: '0 0 40px rgba(255,215,0,0.5), inset 0 0 20px rgba(255,215,0,0.1)',
+              minWidth: 300,
+              textAlign: 'center',
+            }}>
+              <div style={{
+                fontSize: 9, color: '#ffd70099', letterSpacing: '0.4em',
+                marginBottom: 4,
+              }}>
+                ★ MILESTONE ★
+              </div>
+              <div style={{
+                fontSize: 16, fontWeight: 800, color: '#ffd700',
+                letterSpacing: '0.12em', textShadow: '0 0 12px rgba(255,215,0,0.6)',
+                marginBottom: 6,
+              }}>
+                {activeMilestone.title}
+              </div>
+              <div style={{
+                fontSize: 10, color: '#FFC174', fontStyle: 'italic',
+                letterSpacing: '0.05em',
+              }}>
+                {activeMilestone.flavor}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+        
 			{/* ── RUNNER SPECIALIZATION MODAL ── */}
       {specModal && createPortal(
           <div className="modal-root">
@@ -2544,7 +2667,7 @@ export default function App() {
             { id: 'OPS', label: 'OPS' }, 
             { id: 'AGENCY', label: 'AGN', locked: !isUnlocked(state, 'agency'), req: 'LVL 3' },
             { id: 'UPGRADES', label: 'UPG', locked: !isUnlocked(state, 'upgrades_tab'), req: 'LVL 3' }, 
-            { id: 'AWAKENING', label: 'AWK', locked: !isUnlocked(state, 'mainframe'), req: 'LVL 8' },
+            { id: 'AWAKENING', label: 'AWK', locked: !isUnlocked(state, 'awakening_tab'), req: 'LVL 8' },
             { id: 'SETTINGS', label: 'SYS' }
           ].map(t => {
             const isLocked = t.locked === true;
@@ -2587,7 +2710,10 @@ export default function App() {
         onAnimationEnd={() => setShaking(false)}
       >
         {/* Hlavný Grid - Všimni si pb-24 na mobile, aby taby dole nezakryli obsah */}
-        <div className={isMobile ? "flex flex-col flex-1 overflow-y-auto scroll-none pb-24" : "game-grid"}>
+        <div
+          className={isMobile ? "flex flex-col flex-1 overflow-y-auto scroll-none pb-24" : "game-grid"}
+          style={isMobile ? undefined : { minHeight: 0, height: '100%' }}
+        >
 
           {/* ── NOVÝ SIDEBAR ── */}
           {(!isMobile || mobileTab === 'DASH') && (
@@ -2857,58 +2983,97 @@ export default function App() {
             <div className={cn("game-col-center", isMobile && "h-auto p-0 border-none bg-transparent")}>
               
               {/* TABS HEADER */}
-              {!isMobile && (
-                <div className="flex gap-2 mb-14 border-b border-surface-high pb-0">
-                  <Tab
-                    label="OPS"
-                    active={activeTab === 'OPERATIONS'}
-                    onClick={() => { setActiveTab('OPERATIONS'); audioManager.tab(); }}
-                  />
-                  <Tab
-                    label="AGENCY"
-                    active={activeTab === 'AGENCY'}
-                    disabled={!isUnlocked(state, 'agency')}
-                    onClick={() => { setActiveTab('AGENCY'); audioManager.tab(); }}
-                    className={isNewlyUnlocked('agency') ? 'unlock-reveal' : undefined}
-                  />
-                  <Tab
-                    label="UPGRADES"
-                    active={activeTab === 'UPGRADES'}
-                    disabled={!isUnlocked(state, 'upgrades_tab')}
-                    onClick={() => { setActiveTab('UPGRADES'); audioManager.tab(); }}
-                    className={isNewlyUnlocked('upgrades_tab') ? 'unlock-reveal' : undefined}
-                  />
-                  <Tab
-                    label="NETWORK"
-                    active={activeTab === 'NETWORK'}
-                    disabled={!isUnlocked(state, 'district')}
-                    onClick={() => { setActiveTab('NETWORK'); audioManager.tab(); }}
-                    className={isNewlyUnlocked('district') ? 'unlock-reveal' : undefined}
-                  />
-                  <Tab
-                    label="AWAKENING"
-                    active={activeTab === 'AWAKENING'}
-                    disabled={!isUnlocked(state, 'mainframe')} // Odomkne sa pri Lvl 8
-                    onClick={() => { setActiveTab('AWAKENING'); audioManager.tab(); }}
-                    className={isNewlyUnlocked('mainframe') ? 'unlock-reveal' : undefined}
-                  />
-                  <Tab
-                    label="SETTINGS"
-                    active={activeTab === 'SETTINGS'}
-                    onClick={() => { setActiveTab('SETTINGS'); audioManager.tab(); }}
-                  />
-                </div>
-              )}
+              {!isMobile && (() => {
+                const visibleTabs = getVisibleTabs(state);
+                const TAB_TO_ACTIVE = {
+                  OPERATIONS: 'OPERATIONS',
+                  AGENCY:     'AGENCY',
+                  UPGRADES:   'UPGRADES',
+                  NETWORK:    'NETWORK',
+                  AWAKENING:  'AWAKENING',
+                  SETTINGS:   'SETTINGS',
+                };
+                const TAB_BADGE_KEY = {
+                  OPERATIONS: null,
+                  AGENCY:     'AGENCY',
+                  UPGRADES:   'UPGRADES',
+                  NETWORK:    'NETWORK',
+                  AWAKENING:  'AWAKENING',
+                  SETTINGS:   null,
+                };
+                const TAB_NEWUNLOCK = {
+                  OPERATIONS: null,
+                  AGENCY:     'agency',
+                  UPGRADES:   'upgrades_tab',
+                  NETWORK:    'district',
+                  AWAKENING:  'awakening_tab',
+                  SETTINGS:   null,
+                };
+                return (
+                  <div className="flex gap-2 mb-14 border-b border-surface-high pb-0">
+                    {visibleTabs.filter(t => t.visible).map(t => {
+                      const activeKey = TAB_TO_ACTIVE[t.id];
+                      const newUnlockKey = TAB_NEWUNLOCK[t.id];
+                      const badgeKey = TAB_BADGE_KEY[t.id];
+                      return (
+                        <Tab
+                          key={t.id}
+                          label={t.locked ? `${t.label} · ${t.reqText}` : t.label}
+                          active={activeTab === activeKey}
+                          disabled={t.locked}
+                          onClick={() => { if (t.locked) return; setActiveTab(activeKey); audioManager.tab(); }}
+                          className={newUnlockKey && isNewlyUnlocked(newUnlockKey) ? 'unlock-reveal' : undefined}
+                          badge={(!t.locked && activeTab !== activeKey && badgeKey) ? tabBadges[badgeKey] : null}
+                        />
+                      );
+                    })}
+                  </div>
+                );
+              })()}
 
-              {/* ── NOVÝ NETWORK TAB ── */}
-              {activeTab === 'NETWORK' && isUnlocked(state, 'district') && (
-                <NetworkTab state={state} dispatchWithSound={dispatchWithSound} />
-              )}
-
-            {/* ── NOVÝ OPS ── */}
+            {/* ── OPERATIONS ── */}
             {activeTab === 'OPERATIONS' && (
-              <OpsTab state={state} dispatchWithSound={dispatchWithSound} />
+              <div key="tab-OPS" className="tab-zoom" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <OpsTab state={state} dispatchWithSound={dispatchWithSound} />
+              </div>
             )}
+
+            {/* ── AGENCY ── */}
+            {activeTab === 'AGENCY' && isUnlocked(state, 'agency') && (
+              <div key="tab-AGENCY" className="tab-zoom" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <AgencyTab state={state} dispatchWithSound={dispatchWithSound} />
+              </div>
+            )}
+
+            {/* ── UPGRADES ── */}
+            {activeTab === 'UPGRADES' && isUnlocked(state, 'upgrades_tab') && (
+              <div key="tab-UPGRADES" className="tab-zoom" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <UpgradesTab state={state} dispatchWithSound={dispatchWithSound} />
+              </div>
+            )}
+
+            {/* ── NETWORK ── */}
+            {activeTab === 'NETWORK' && isUnlocked(state, 'district') && (
+              <div key="tab-NETWORK" className="tab-zoom" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <NetworkTab state={state} dispatchWithSound={dispatchWithSound} />
+              </div>
+            )}
+
+            {/* ── AWAKENING ── */}
+            {activeTab === 'AWAKENING' && isUnlocked(state, 'awakening_tab') && (
+              <div key="tab-AWAKENING" className="tab-zoom" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <AwakeningTab state={state} dispatchWithSound={dispatchWithSound} />
+              </div>
+            )}
+
+            {/* ── SETTINGS ── */}
+            {activeTab === 'SETTINGS' && (
+              <div key="tab-SETTINGS" className="tab-zoom" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <SettingsTab state={state} dispatch={dispatch} />
+              </div>
+            )}
+
+            
 
 
 
@@ -3240,11 +3405,6 @@ export default function App() {
               </div>
             )} */}
 
-            {/* ── NOVÝ AGENCY ── */}
-            {activeTab === 'AGENCY' && isUnlocked(state, 'agency') && (
-              <AgencyTab state={state} dispatchWithSound={dispatchWithSound} />
-            )}
-
             {/* ── AGENCY TAB ── 
             {activeTab === 'AGENCY' && isUnlocked(state, 'agency') && (() => {
               return (
@@ -3344,11 +3504,6 @@ export default function App() {
               );
             })()} */}
 
-            {/* ── NOVÝ UPGRADES ── */}
-            {activeTab === 'UPGRADES' && (
-              <UpgradesTab state={state} dispatchWithSound={dispatchWithSound} />
-            )}
-
 
             {/* ── UPGRADES TAB ── 
             {activeTab === 'UPGRADES' && (
@@ -3443,11 +3598,6 @@ export default function App() {
             )} */}
 
 
-            {/* NOVÝ AWAKENING TAB */}
-            {activeTab === 'AWAKENING' && isUnlocked(state, 'mainframe') && (
-              <AwakeningTab state={state} dispatchWithSound={dispatchWithSound} />
-            )}
-
 
             {/* AWAKENING TAB 
             {activeTab === 'AWAKENING' && isUnlocked(state, 'mainframe') && (
@@ -3535,11 +3685,6 @@ export default function App() {
 
               </div>
             )} */}
-
-            {/* ── NOVÝ SETTINGS TAB ── */}
-            {activeTab === 'SETTINGS' && (
-              <SettingsTab state={state} dispatch={dispatch} />
-            )}
 
 
             {/* ── SETTINGS TAB ── 
@@ -3836,57 +3981,79 @@ export default function App() {
           </div>
           )}
 
-          {/* ── NOVÝ INVENTORY ── */}
-          {(!isMobile || mobileTab === 'DASH') && (
-            <InventoryPanel state={state} dispatchWithSound={dispatchWithSound} />
-          )}
+          {/* ── MISSION COMPLETE / FAILED SPLASH SCREEN ── */}
+          {state.missionSplash && (() => {
+            const splash = state.missionSplash;
+            const isFailed = splash.failed === true;
+            
+            // Dynamické farby a texty podľa stavu
+            const accentColor = isFailed ? '#ef4444' : '#22c55e';
+            const headerText = isFailed ? ':: CONNECTION_SEVERED ::' : ':: INFILTRATION_SUCCESS ::';
+            const goldLabel = isFailed ? 'DATA_CORRUPTED' : 'FUNDS_EXTRACTED';
+            const xpLabel = isFailed ? 'TRACE_RESIDUE' : 'EXP_GAINED';
 
-          {/* ── MISSION COMPLETE SPLASH SCREEN ── */}
-          {state.missionSplash && createPortal(
+            return createPortal(
+              <div style={{
+                position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.85)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)',
+                animation: 'fadeIn 0.2s ease-out'
+              }}>
                 <div style={{
-                  position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.85)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)',
-                  animation: 'fadeIn 0.2s ease-out'
+                  background: 'var(--surface-low)', border: `2px solid ${accentColor}`,
+                  padding: '40px', minWidth: 400, textAlign: 'center',
+                  boxShadow: `0 0 40px ${accentColor}33`,
+                  animation: 'slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
                 }}>
-                  <div style={{
-                    background: 'var(--surface-low)', border: '2px solid #22c55e',
-                    padding: '40px', minWidth: 400, textAlign: 'center',
-                    boxShadow: '0 0 40px rgba(34, 197, 94, 0.2)',
-                    animation: 'slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
-                  }}>
-                    <div style={{ fontSize: 12, color: '#22c55e', letterSpacing: '0.3rem', marginBottom: 10 }}>:: INFILTRATION_SUCCESS ::</div>
-                    <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--bg)', background: '#22c55e', padding: '10px', letterSpacing: '0.1rem', marginBottom: 20 }}>
-                      {state.missionSplash.label}
-                    </div>
-                    
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 30 }}>
-                      <div style={{ background: 'var(--surface-high)', padding: '10px', border: '1px solid #22c55e' }}>
-                        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>FUNDS_EXTRACTED</div>
-                        <div style={{ fontSize: 16, color: '#ffc174', fontWeight: 700 }}>+{state.missionSplash.gold.toLocaleString()} CR</div>
-                      </div>
-                      <div style={{ background: 'var(--surface-high)', padding: '10px', border: '1px solid #22c55e' }}>
-                        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>EXP_GAINED</div>
-                        <div style={{ fontSize: 16, color: '#00d4ff', fontWeight: 700 }}>+{state.missionSplash.xp.toLocaleString()} XP</div>
-                      </div>
-                    </div>
-
-                    <button 
-                        onClick={() => {
-                            audioManager.siphonSuccess(); // ZVUK: Úspešná akcia
-                            dispatch({ type: 'CLEAR_SPLASH' });
-                        }}
-                        style={{ 
-                          width: '100%', padding: '14px', background: 'transparent', 
-                          border: '1px solid #22c55e', color: '#22c55e', 
-                          fontSize: 12, fontWeight: 700, letterSpacing: '0.2rem', cursor: 'pointer' 
-                        }}
-                    >
-                        [ ACKNOWLEDGE ]
-                    </button>
+                  <div style={{ fontSize: 12, color: accentColor, letterSpacing: '0.3rem', marginBottom: 10 }}>
+                    {headerText}
                   </div>
-                </div>,
-                document.body
-              )}
+                  
+                  <div style={{ 
+                    fontSize: 24, fontWeight: 700, color: 'var(--bg)', background: accentColor, 
+                    padding: '10px', letterSpacing: '0.1rem', marginBottom: 20 
+                  }}>
+                    {splash.label}
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 30 }}>
+                    <div style={{ background: 'var(--surface-high)', padding: '10px', border: `1px solid ${accentColor}` }}>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{goldLabel}</div>
+                      <div style={{ fontSize: 16, color: '#ffc174', fontWeight: 700 }}>
+                        {isFailed ? '-' : '+'}{splash.gold.toLocaleString()} CR
+                      </div>
+                    </div>
+                    <div style={{ background: 'var(--surface-high)', padding: '10px', border: `1px solid ${accentColor}` }}>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>{xpLabel}</div>
+                      <div style={{ fontSize: 16, color: '#00d4ff', fontWeight: 700 }}>
+                        +{splash.xp.toLocaleString()} XP
+                      </div>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={() => {
+                      // Zvuk závisí od úspechu/zlyhania
+                      if (isFailed) {
+                        audioManager.siphonFail();
+                      } else {
+                        audioManager.siphonSuccess();
+                      }
+                      dispatch({ type: 'CLEAR_SPLASH' });
+                    }}
+                    style={{ 
+                      width: '100%', padding: '14px', background: 'transparent', 
+                      border: `1px solid ${accentColor}`, color: accentColor, 
+                      fontSize: 12, fontWeight: 700, letterSpacing: '0.2rem', cursor: 'pointer',
+                      transition: 'background 120ms, color 120ms'
+                    }}
+                  >
+                    [ ACKNOWLEDGE ]
+                  </button>
+                </div>
+              </div>,
+              document.body
+            );
+          })()}
 
               {/* ── AFK PROMPT (Si tu?) ── */}
               {state.idlePromptActive && createPortal(
@@ -4042,6 +4209,12 @@ export default function App() {
                 document.body
               )}
 
+
+          {/* ── NOVÝ INVENTORY ── */}
+          {(!isMobile || mobileTab === 'DASH') && getUIVisibility(state).inventoryPanel && (
+              <InventoryPanel state={state} dispatchWithSound={dispatchWithSound} />
+            )}
+
           {/* ── RIGHT COL: INVENTORY ── 
           {(!isMobile || mobileTab === 'DASH') && (
             <div 
@@ -4167,6 +4340,22 @@ export default function App() {
               )} 
 
               */}
+              {/* Heat critical vignette — subtle red screen edge glow */}
+        {state.heat >= 80 && (
+          <div className={`heat-vignette ${state.heat >= 95 ? 'critical' : ''}`} />
+        )}
+
+        {showBoot && <BootSequence onComplete={() => setShowBoot(false)} />}
+
+        {state.zeroLastMessage
+          && state.zeroLastMessage.level === 'critical'
+          && !state.zeroLastMessage.seen
+          && (
+          <ZeroOverlay
+            message={state.zeroLastMessage}
+            onDismiss={() => dispatch({ type: 'DISMISS_ZERO_OVERLAY' })}
+          />
+        )}
 
         </div>
       </div>

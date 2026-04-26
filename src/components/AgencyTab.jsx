@@ -9,6 +9,7 @@ import {
 
 import { Panel, Tag, DataBar, BBtn, fmt, COLORS } from '../design/primitives.jsx';
 import { isUnlocked, getRunnerCost } from '../gameLogic.js';
+import { AgentAvatar } from './AgentAvatar.jsx';
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 const ROLE_CONFIG = {
@@ -16,7 +17,7 @@ const ROLE_CONFIG = {
     label: 'STREET_RUNNER',
     level: 3,
     baseCost: 300,
-    passive: '+2 CR/30s',
+    passive: '+15 CR / 30s',
     icon: Zap,
     color: COLORS.amber,
   },
@@ -24,7 +25,7 @@ const ROLE_CONFIG = {
     label: 'DATA_THIEF',
     level: 5,
     baseCost: 800,
-    passive: '+8 CR/2min',
+    passive: '+60 CR / 2min',
     icon: Eye,
     color: COLORS.cyan,
   },
@@ -32,7 +33,7 @@ const ROLE_CONFIG = {
     label: 'INFILTRATOR',
     level: 7,
     baseCost: 2500,
-    passive: '+35 CR/15min',
+    passive: '+250 CR / 15min',
     icon: Shield,
     color: COLORS.purple,
   },
@@ -40,9 +41,18 @@ const ROLE_CONFIG = {
     label: 'FIXER',
     level: 9,
     baseCost: 8000,
-    passive: '+150 CR/hr',
+    passive: '+1K CR / 1h',
     icon: Brain,
     color: COLORS.gold,
+  },
+  shadowBroker: {
+    label: 'SHADOW_BROKER',
+    level: 1,
+    baseCost: 25000,
+    passive: '+5K CR / 2h',
+    icon: Star,
+    color: COLORS.red,
+    requiresPrestige: 1,
   },
 };
 
@@ -153,13 +163,25 @@ export function AgencyTab({ state, dispatchWithSound }) {
               </div>
             </div>
             <div style={{
-              fontFamily: 'inherit', fontSize: 9,
-              color: COLORS.purple, opacity: 0.7,
-              textAlign: 'right', lineHeight: 1.4,
+              display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end',
             }}>
-              <div>┌── SYNC ──┐</div>
-              <div>│ {'◆'.repeat(Math.min(4, trainees.length))}{'◇'.repeat(Math.max(0, 4 - trainees.length))} │</div>
-              <div>└──────────┘</div>
+              <div style={{
+                fontSize: 8, color: COLORS.purple, opacity: 0.7,
+                letterSpacing: '0.25em', fontWeight: 700,
+              }}>
+                SYNC
+              </div>
+              <div style={{ display: 'flex', gap: 3 }}>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} style={{
+                    width: 10, height: 10,
+                    border: `1px solid ${COLORS.purple}`,
+                    background: i < trainees.length ? COLORS.purple : 'transparent',
+                    boxShadow: i < trainees.length ? `0 0 6px ${COLORS.purple}` : 'none',
+                    transition: 'all 200ms',
+                  }} />
+                ))}
+              </div>
             </div>
           </div>
         </Panel>
@@ -170,7 +192,8 @@ export function AgencyTab({ state, dispatchWithSound }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
           {Object.entries(ROLE_CONFIG).map(([role, cfg]) => {
             const count = byRole[role]?.length ?? 0;
-            const locked = state.level < cfg.level;
+            const prestigeReq = cfg.requiresPrestige ?? 0;
+            const locked = state.level < cfg.level || (state.prestige ?? 0) < prestigeReq;
             const maxed = count >= 5;
             const cost = getRunnerCost(cfg.baseCost, count);
             const canAfford = !locked && !maxed && state.gold >= cost;
@@ -273,7 +296,15 @@ function RecruitCell({ role, config, count, cost, locked, maxed, canAfford, play
       {/* Cost / state */}
       <div style={{ marginTop: 8, fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', fontVariantNumeric: 'tabular-nums' }}>
         {locked ? (
-          <span style={{ color: COLORS.red }}>LVL {config.level} REQ</span>
+          <span style={{ color: COLORS.red }}>
+            {(state => {
+              // Inline compute: which requirement blocks?
+              const prestigeReq = config.requiresPrestige ?? 0;
+              if (playerLevel < config.level) return `LVL ${config.level} REQ`;
+              if (prestigeReq > 0) return `PRESTIGE ${prestigeReq} REQ`;
+              return 'LOCKED';
+            })()}
+          </span>
         ) : maxed ? (
           <span style={{ color: COLORS.green }}>◆ MAX_CAPACITY</span>
         ) : (
@@ -376,28 +407,31 @@ function AgentCard({ agent, gold, dispatchWithSound }) {
       borderLeft: `4px solid ${borderColor}`,
       padding: 10,
       display: 'flex', flexDirection: 'column', gap: 8,
+      height: '100%',
       animation: isPending ? 'borderPulseAmber 1.4s ease-in-out infinite' : 'none',
     }}>
       {/* ─── Top row: avatar + name + status ─── */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
         <div style={{
-          width: 40, height: 40, flexShrink: 0,
-          border: `1px solid ${cfg.color}`,
-          color: cfg.color,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 12, fontWeight: 800, letterSpacing: '0.05em',
-          position: 'relative',
-          background: `repeating-linear-gradient(135deg, transparent 0 4px, ${cfg.color}11 4px 5px)`,
-        }}>
-          {avatar}
-          {isTraining && (
-            <span style={{
-              position: 'absolute', top: -3, right: -3,
-              width: 7, height: 7, background: COLORS.purple,
-              boxShadow: `0 0 6px ${COLORS.purple}`,
-            }} />
-          )}
-        </div>
+            width: 40, height: 40, flexShrink: 0,
+            border: `1px solid ${cfg.color}`,
+            position: 'relative',
+            overflow: 'hidden',
+            }}>
+            <AgentAvatar
+                name={agent.name}
+                role={agent.role}
+                size={40}
+                status={agent.status}
+            />
+            {isTraining && (
+                <span style={{
+                position: 'absolute', top: -3, right: -3,
+                width: 7, height: 7, background: COLORS.purple,
+                boxShadow: `0 0 6px ${COLORS.purple}`,
+                }} />
+            )}
+            </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
@@ -505,7 +539,7 @@ function AgentCard({ agent, gold, dispatchWithSound }) {
       )}
 
       {/* ─── Actions ─── */}
-      <div style={{ marginTop: 2 }}>
+      <div style={{ marginTop: 'auto', paddingTop: 4 }}>
         {isCaptured ? (
           <BBtn
             size="sm" variant="danger" full
@@ -534,48 +568,39 @@ function AgentCard({ agent, gold, dispatchWithSound }) {
               </BBtn>
             </div>
           </div>
-        ) : (
-          <div style={{ display: 'flex', gap: 4 }}>
-            {canHeal && (
-              <BBtn
-                size="sm" variant="success"
-                onClick={() => dispatchWithSound({ type: 'HEAL_AGENT', agentId: agent.id })}
-                disabled={gold < healCost}
-                full
-              >
-                HEAL {fmt(healCost)}
-              </BBtn>
-            )}
-            {isActive && !agent.fatigue && (
-              <BBtn
-                size="sm" variant="purple"
-                onClick={() => dispatchWithSound({ type: 'ASSIGN_TRAINING', agentId: agent.id })}
-                full
-              >
-                ▶ TRAIN
-              </BBtn>
-            )}
-            {isTraining && (
-              <BBtn
-                size="sm" variant="danger"
-                onClick={() => dispatchWithSound({ type: 'STOP_TRAINING', agentId: agent.id })}
-                full
-              >
-                ◼ STOP SIM
-              </BBtn>
-            )}
-            {isOnMission && (
-              <div style={{
-                padding: '6px', width: '100%',
-                textAlign: 'center',
-                fontSize: 10, color: COLORS.cyan,
-                border: `1px dashed ${COLORS.cyan}`,
-                letterSpacing: '0.15em',
-              }}>
-                :: DEPLOYED ::
-              </div>
-            )}
+        ) : isOnMission ? (
+          <div style={{
+            padding: '6px', width: '100%',
+            textAlign: 'center',
+            fontSize: 10, color: COLORS.cyan,
+            border: `1px dashed ${COLORS.cyan}`,
+            letterSpacing: '0.15em',
+            boxSizing: 'border-box',
+          }}>
+            :: DEPLOYED ::
           </div>
+        ) : isTraining ? (
+          <BBtn
+            size="sm" variant="danger" full
+            onClick={() => dispatchWithSound({ type: 'STOP_TRAINING', agentId: agent.id })}
+          >
+            ◼ STOP SIM
+          </BBtn>
+        ) : isActive && agent.fatigue === 0 ? (
+          <BBtn
+            size="sm" variant="purple" full
+            onClick={() => dispatchWithSound({ type: 'ASSIGN_TRAINING', agentId: agent.id })}
+          >
+            ▶ TRAIN
+          </BBtn>
+        ) : (
+          <BBtn
+            size="sm" variant="success" full
+            onClick={() => dispatchWithSound({ type: 'HEAL_AGENT', agentId: agent.id })}
+            disabled={gold < healCost}
+          >
+            HEAL {fmt(healCost)}
+          </BBtn>
         )}
       </div>
     </div>

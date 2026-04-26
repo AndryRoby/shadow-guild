@@ -73,3 +73,325 @@ html, body {
     from { transform: translateY(20px); opacity: 0; }
     to   { transform: translateY(0);    opacity: 1; }
   }
+
+  @keyframes heatFlash {
+    0%, 100% { box-shadow: 0 0 0 rgba(239,68,68,0); transform: scale(1); }
+    30%      { box-shadow: 0 0 18px rgba(239,68,68,0.7); transform: scale(1.02); }
+  }
+  .heat-flash { animation: heatFlash 0.6s ease-out 3; }
+
+  @keyframes milestoneToastIn {
+    0%   { opacity: 0; transform: translateY(-20px) scale(0.92); }
+    60%  { opacity: 1; transform: translateY(4px) scale(1.02); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .milestone-toast {
+    animation: milestoneToastIn 0.6s cubic-bezier(.2,.9,.2,1);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+   THE EYE AWAKENED — Grandmapocalypse visual shift
+   Activates at prestige 3 OR 10M total gold.
+   Subtle: user sees "something is off" but it's not instantly obvious.
+   ═══════════════════════════════════════════════════════════════ */
+.eye-awakened {
+  position: relative;
+}
+.eye-awakened::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 40%,
+    rgba(239, 68, 68, 0.04) 70%,
+    rgba(239, 68, 68, 0.08) 100%
+  );
+  pointer-events: none;
+  z-index: 2;
+  animation: eyePulse 8s ease-in-out infinite;
+}
+@keyframes eyePulse {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
+
+/* Sidebar: prevent child compression. Scroll instead. */
+.sg-sidebar > * {
+  flex-shrink: 0;
+}
+
+/* Heat critical vignette — screen edges pulse red when heat ≥ 80 */
+.heat-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+  box-shadow: inset 0 0 120px 20px rgba(239, 68, 68, 0.25);
+  animation: heatVignette 1.6s ease-in-out infinite;
+}
+.heat-vignette.critical {
+  box-shadow: inset 0 0 180px 40px rgba(239, 68, 68, 0.45);
+  animation: heatVignette 0.9s ease-in-out infinite;
+}
+@keyframes heatVignette {
+  0%, 100% { opacity: 0.7; }
+  50%      { opacity: 1; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   E1 — CHROMATIC ABERRATION (heat ≥ 90)
+   Body classes added/removed by heat watcher hook in App.jsx.
+   Two layers: red shifted -, cyan shifted +. Subtle horizontal jitter.
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes chromaShiftSubtle {
+  0%, 100% { transform: translate(0, 0); }
+  20%      { transform: translate(-0.5px, 0); }
+  40%      { transform: translate(0.5px, 0); }
+  60%      { transform: translate(-0.3px, 0.2px); }
+  80%      { transform: translate(0.3px, -0.2px); }
+}
+@keyframes chromaShiftHard {
+  0%, 100% { transform: translate(0, 0); }
+  10%      { transform: translate(-1.5px, 0.3px); }
+  25%      { transform: translate(1.5px, -0.3px); }
+  45%      { transform: translate(-2px, 0); }
+  60%      { transform: translate(2px, 0.2px); }
+  78%      { transform: translate(-1px, -0.5px); }
+  92%      { transform: translate(1px, 0.4px); }
+}
+@keyframes glitchFlicker {
+  0%, 95%, 100% { opacity: 1; }
+  96%           { opacity: 0.85; transform: translateX(2px); }
+  97%           { opacity: 1;    transform: translateX(-3px); }
+  98%           { opacity: 0.9;  transform: translateX(1px); }
+  99%           { opacity: 1;    transform: translateX(0); }
+}
+
+/* Heat-tier overlay layers — pseudo-elements on body */
+body.heat-glitch::before,
+body.heat-glitch::after,
+body.heat-glitch-critical::before,
+body.heat-glitch-critical::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9997;
+  mix-blend-mode: screen;
+  background: transparent;
+}
+
+/* WARN (90-94): subtle red/cyan ghost overlay */
+body.heat-glitch::before {
+  box-shadow: inset 1px 0 0 rgba(239, 68, 68, 0.06);
+  animation: chromaShiftSubtle 1.2s steps(8) infinite;
+}
+body.heat-glitch::after {
+  box-shadow: inset -1px 0 0 rgba(0, 212, 255, 0.06);
+  animation: chromaShiftSubtle 1.2s steps(8) infinite reverse;
+}
+
+/* CRITICAL (≥95): aggressive shift + flicker */
+body.heat-glitch-critical::before {
+  box-shadow: inset 2.5px 0 0 rgba(239, 68, 68, 0.14), inset -1px 0 0 rgba(255, 0, 80, 0.08);
+  animation: chromaShiftHard 0.4s steps(10) infinite, glitchFlicker 3.5s linear infinite;
+}
+body.heat-glitch-critical::after {
+  box-shadow: inset -2.5px 0 0 rgba(0, 212, 255, 0.14), inset 1px 0 0 rgba(80, 255, 255, 0.08);
+  animation: chromaShiftHard 0.4s steps(10) infinite reverse, glitchFlicker 3.5s linear infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   E6 — TAB SLIDE-IN (opacity + translateY only)
+   Scale/filter/blur cause subpixel text smearing across the tab.
+   Pure opacity + small whole-pixel translate keeps text crisp.
+   No will-change either — browser composites only when needed.
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes tabSlideIn {
+  0%   { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.tab-zoom {
+  animation: tabSlideIn 160ms ease-out;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   E5 — BOOT SEQUENCE (terminal text scroll)
+   Used by BootSequence.jsx
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes bootCursor {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.boot-cursor {
+  animation: bootCursor 0.6s steps(1) infinite;
+}
+
+@keyframes bootLineIn {
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.boot-line {
+  animation: bootLineIn 80ms ease-out both;
+}
+
+@keyframes bootScanline {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   E2 — HEX FEED (live data illusion in detail panels)
+   Used by HexFeed.jsx
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes hexFlicker {
+  0%, 100%  { opacity: 0.55; }
+  10%       { opacity: 0.2; }
+  18%       { opacity: 0.7; }
+  35%       { opacity: 0.4; }
+  60%       { opacity: 0.65; }
+  85%       { opacity: 0.3; }
+}
+.hex-feed-line {
+  animation: hexFlicker 2.4s ease-in-out infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   COMBO STATE MACHINE — visual feedback for STEALTH/AGGRESSIVE/BURNING
+   - STEALTH: no body effect (calm)
+   - AGGRESSIVE: subtle amber edge glow on body
+   - BURNING: red chromatic aberration + faint screen shake
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes comboAggressivePulse {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 1; box-shadow: inset 0 0 0 1px rgba(255,193,116,0.45); }
+}
+@keyframes comboBurningPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: translateX(0);
+    box-shadow: inset 0 0 0 1px rgba(239,68,68,0.7), 0 0 14px rgba(239,68,68,0.5);
+  }
+  25%      { transform: translateX(-1px); }
+  75%      { transform: translateX(1px); }
+}
+
+/* Body-level effects when combo state changes */
+body.combo-aggressive::before {
+  content: '';
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 9990;
+  box-shadow: inset 0 0 80px rgba(255,193,116,0.06);
+  animation: aggressiveAmbient 2.4s ease-in-out infinite;
+}
+@keyframes aggressiveAmbient {
+  0%, 100% { box-shadow: inset 0 0 60px rgba(255,193,116,0.03); }
+  50%      { box-shadow: inset 0 0 100px rgba(255,193,116,0.10); }
+}
+
+body.combo-burning {
+  animation: burningShake 0.18s ease-in-out infinite;
+}
+body.combo-burning::before {
+  content: '';
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 9990;
+  box-shadow: inset 0 0 100px rgba(239,68,68,0.18);
+  animation: burningAmbient 0.6s ease-in-out infinite;
+}
+body.combo-burning::after {
+  content: '';
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 9991;
+  background:
+    repeating-linear-gradient(0deg,
+      transparent 0,
+      transparent 2px,
+      rgba(239,68,68,0.04) 2px,
+      rgba(239,68,68,0.04) 3px);
+  mix-blend-mode: screen;
+}
+@keyframes burningShake {
+  0%, 100% { transform: translate(0, 0); }
+  25%      { transform: translate(-0.6px, 0.3px); }
+  50%      { transform: translate(0.6px, -0.3px); }
+  75%      { transform: translate(-0.4px, -0.5px); }
+}
+@keyframes burningAmbient {
+  0%, 100% { box-shadow: inset 0 0 80px rgba(239,68,68,0.10); }
+  50%      { box-shadow: inset 0 0 140px rgba(239,68,68,0.25); }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   NEURAL_LINK — sticky ZERO panel
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes signalPulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50%      { opacity: 1;   transform: scale(1.15); }
+}
+@keyframes cursorBlink {
+  0%, 50%   { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+@keyframes neuralLinkNew {
+  0%   { box-shadow: inset 0 0 30px rgba(34,255,136,0.30), 0 0 24px rgba(34,255,136,0.45); }
+  100% { box-shadow: inset 0 0 20px rgba(34,255,136,0.07), 0 0 12px rgba(34,255,136,0.13); }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ZERO_OVERLAY — full-screen ghost projection (critical messages)
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes zeroOverlayIn {
+  0%   { opacity: 0; backdrop-filter: blur(0px); }
+  100% { opacity: 1; backdrop-filter: blur(8px); }
+}
+@keyframes zeroOverlayHeader {
+  0%   { opacity: 0; letter-spacing: 0.1em; transform: scale(0.95); }
+  100% { opacity: 1; letter-spacing: 0.5em; transform: scale(1); }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   COMBO LIVE LOG GLOW
+   Top log entry pulses while combo is active and entry is a batched
+   siphon/breach (e.g. "✓ SIPHON x4 ..."). Visual signal that the
+   line is "live" and accumulating, not stale history.
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes comboGlowPulse {
+  0%, 100% { box-shadow: inset 0 0 0 1px rgba(255,193,116,0.35), 0 0 8px rgba(255,193,116,0.15); }
+  50%      { box-shadow: inset 0 0 0 1px rgba(255,193,116,0.7),  0 0 16px rgba(255,193,116,0.4); }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   COMBO MILESTONE FLASH (5 / 10 / 20)
+   Screen-edge pulse instead of toast — non-blocking juice.
+   Body class added/removed by App.jsx hook on comboCount change.
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes comboFlashMild {
+  0%, 100% { box-shadow: inset 0 0 0 0 rgba(255,193,116,0); }
+  50%      { box-shadow: inset 0 0 80px 8px rgba(255,193,116,0.18); }
+}
+@keyframes comboFlashStrong {
+  0%, 100% { box-shadow: inset 0 0 0 0 rgba(255,215,0,0); }
+  50%      { box-shadow: inset 0 0 140px 16px rgba(255,215,0,0.28); }
+}
+@keyframes comboFlashCritical {
+  0%, 100% { box-shadow: inset 0 0 0 0 rgba(239,68,68,0); }
+  40%      { box-shadow: inset 0 0 200px 30px rgba(239,68,68,0.4); }
+  70%      { box-shadow: inset 0 0 200px 30px rgba(255,215,0,0.3); }
+}
+
+body.combo-flash-mild::after,
+body.combo-flash-strong::after,
+body.combo-flash-critical::after {
+  content: '';
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 9996;
+}
+body.combo-flash-mild::after     { animation: comboFlashMild     300ms ease-out; }
+body.combo-flash-strong::after   { animation: comboFlashStrong   450ms ease-out; }
+body.combo-flash-critical::after { animation: comboFlashCritical 600ms ease-out; }

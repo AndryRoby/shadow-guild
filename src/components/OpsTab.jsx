@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 
 import { Panel, Tag, BBtn, fmt, COLORS } from '../design/primitives.jsx';
-import { getDistrictData } from '../selectors.js';
+import { getDistrictData, getUIVisibility } from '../selectors.js';
 import {
   isUnlocked,
   effectiveSuccessRate,
@@ -19,9 +19,11 @@ import {
   CITY_MAP,
 } from '../../CITY_MAP.js';
 import { SystemLog } from './SystemLog.jsx';
+import { audioManager } from '../audio/AudioManager.js';
 
 // ─── Main ──────────────────────────────────────────────────────────────────
 export function OpsTab({ state, dispatchWithSound }) {
+  const ui = getUIVisibility(state);
   const district = getDistrictData(state);
 
   // Which districts are unlocked (based on captured hexes)
@@ -40,6 +42,7 @@ export function OpsTab({ state, dispatchWithSound }) {
     if (unlockedDistricts.length < 2) return;
     const currentIdx = unlockedDistricts.indexOf(state.district);
     const nextIdx = (currentIdx + dir + unlockedDistricts.length) % unlockedDistricts.length;
+    audioManager.tab(); // Zvuk pri zmene distrktu
     dispatchWithSound({ type: 'SET_DISTRICT', district: unlockedDistricts[nextIdx] });
   };
 
@@ -55,23 +58,29 @@ export function OpsTab({ state, dispatchWithSound }) {
       paddingRight: 4,
     }}>
         {/* ─── TARGET BRIEFING ───────────────────────── */}
-        {districtAvailable ? (
-          <TargetBriefing
-            district={district}
-            currentId={state.district}
-            unlockedDistricts={unlockedDistricts}
-            onPrev={() => changeDistrict(-1)}
-            onNext={() => changeDistrict(1)}
-          />
-        ) : (
-          <LockedBriefing />
+        {ui.targetBriefing && (
+          districtAvailable ? (
+            <TargetBriefing
+              state={state}
+              district={district}
+              currentId={state.district}
+              unlockedDistricts={unlockedDistricts}
+              onPrev={() => changeDistrict(-1)}
+              onNext={() => changeDistrict(1)}
+            />
+          ) : (
+            <LockedBriefing />
+          )
         )}
 
         {/* ─── PROTOCOL SELECTOR ─────────────────────── */}
         {isUnlocked(state, 'protocol') && (
           <ProtocolSelector
             activeProtocol={state.activeProtocol ?? 'NONE'}
-            onSelect={(p) => dispatchWithSound({ type: 'SET_PROTOCOL', protocol: p })}
+            onSelect={(p) => {
+              audioManager.tab(); // Zvuk pri výbere protokolu
+              dispatchWithSound({ type: 'SET_PROTOCOL', protocol: p });
+            }}
           />
         )}
 
@@ -93,11 +102,13 @@ export function OpsTab({ state, dispatchWithSound }) {
         />
 
         {/* ─── SECONDARY ACTIONS ─────────────────────── */}
-        <SecondaryActionGrid
-          state={state}
-          dispatchWithSound={dispatchWithSound}
-          isBlocked={isBlocked}
-        />
+        {ui.secondaryOps && (
+          <SecondaryActionGrid
+            state={state}
+            dispatchWithSound={dispatchWithSound}
+            isBlocked={isBlocked}
+          />
+        )}
 
         {/* ─── SYSTEM LOG ────────────────────────────── */}
         <SystemLog state={state} />
@@ -106,7 +117,7 @@ export function OpsTab({ state, dispatchWithSound }) {
 }
 
 // ─── TARGET BRIEFING ───────────────────────────────────────────────────────
-function TargetBriefing({ district, currentId, unlockedDistricts, onPrev, onNext }) {
+function TargetBriefing({ state, district, currentId, unlockedDistricts, onPrev, onNext }) {
   const canNavigate = unlockedDistricts.length > 1;
 
   return (
@@ -138,12 +149,41 @@ function TargetBriefing({ district, currentId, unlockedDistricts, onPrev, onNext
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             <Tag color={COLORS.green}>
-              <Coins size={9} style={{ display: 'inline', marginRight: 2 }} />
-              LOOT x{district.mult.toFixed(1)}
+                <Coins size={9} style={{ display: 'inline', marginRight: 2 }} />
+                LOOT x{district.mult.toFixed(1)}
             </Tag>
-            <Tag color={COLORS.red}>
-                <Flame size={9} style={{ display: 'inline', marginRight: 2 }} />
-                COOL {district.heatDecay.toFixed(2)}/s
+
+            {(() => {
+                const dHeat = (state.districtHeat ?? {})[currentId] ?? 0;
+                const isHot = !!(state.hotZones ?? {})[currentId];
+
+                const color =
+                isHot ? COLORS.red :
+                dHeat > 60 ? COLORS.orange :
+                dHeat > 30 ? COLORS.amber :
+                COLORS.green;
+
+                return (
+                <Tag color={color}>
+                    <Flame size={9} style={{ display: 'inline', marginRight: 2 }} />
+                    LOCAL {Math.round(dHeat)}%{isHot ? ' · HOT' : ''}
+                </Tag>
+                );
+            })()}
+            <Tag color={(() => {
+              // Slovný risk level podľa decay
+              const d = district.heatDecay;
+              return d >= 0.3 ? COLORS.green : d >= 0.2 ? COLORS.amber : d >= 0.15 ? COLORS.orange : COLORS.red;
+            })()}>
+              <Flame size={9} style={{ display: 'inline', marginRight: 2 }} />
+              {(() => {
+                const d = district.heatDecay;
+                if (d >= 0.3) return 'HEAT DECAY SAFE';
+                if (d >= 0.2) return 'HEAT DECAY NEUTRAL';
+                if (d >= 0.15) return 'HEAT DECAY RISKY';
+                if (d >= 0.10) return 'HEAT DECAY DANGEROUS';
+                return 'EXTREME';
+              })()} ({district.heatDecay.toFixed(2)}/s)
             </Tag>
             {district.xpMult > 1 && (
               <Tag color={COLORS.purple}>
@@ -167,7 +207,7 @@ function TargetBriefing({ district, currentId, unlockedDistricts, onPrev, onNext
         // LOOT: range 1.0-8.0 → scale to 1-6
         const lootBars = Math.min(6, Math.max(1, Math.round(district.mult * 0.75)));
         // HEAT RISK: range 2.5-20 (inverse of decay) → scale to 1-6
-        const heatBars = Math.min(6, Math.max(1, Math.round((district.heat - 2) / 3)));
+        const heatBars = Math.min(6, Math.max(1, Math.round((district.heatRisk - 2) / 3)));
         // XP: range 1.0-4.0 → scale to 1-6
         const xpBars = Math.min(6, Math.max(1, Math.round(district.xpMult * 1.5)));
 
@@ -249,7 +289,10 @@ function ProtocolSelector({ activeProtocol, onSelect }) {
       </div>
       {activeProtocol !== 'NONE' && (
         <button
-          onClick={() => onSelect('NONE')}
+          onClick={() => {
+            audioManager.tab(); // Zvuk pri deaktivácii protokolu
+            onSelect('NONE');
+          }}
           style={{
             marginTop: 8,
             width: '100%',
@@ -275,106 +318,135 @@ function ProtocolSelector({ activeProtocol, onSelect }) {
 // Shows active combo or brief shatter on expiration.
 // `lastShatterTime` is tracked per-mount to avoid showing x0 on tab remount.
 function ComboDisplay({ combo, comboTimer, shatterKey }) {
-    const [showShatter, setShowShatter] = useState(false);
-    const prevShatterKey = useRef(shatterKey);
-    const mountedAt = useRef(Date.now());
-  
-    useEffect(() => {
-      // Only show shatter if key actually changed after mount (not on initial render)
-      if (shatterKey !== prevShatterKey.current && Date.now() - mountedAt.current > 500) {
-        setShowShatter(true);
-        const t = setTimeout(() => setShowShatter(false), 600);
-        prevShatterKey.current = shatterKey;
-        return () => clearTimeout(t);
-      }
+  const [showShatter, setShowShatter] = useState(false);
+  const prevShatterKey = useRef(shatterKey);
+  const mountedAt = useRef(Date.now());
+
+  useEffect(() => {
+    if (shatterKey !== prevShatterKey.current && Date.now() - mountedAt.current > 500) {
+      setShowShatter(true);
+      const t = setTimeout(() => setShowShatter(false), 600);
       prevShatterKey.current = shatterKey;
-    }, [shatterKey]);
-  
-    const comboPct = Math.min(100, (comboTimer / 4000) * 100);
-  
-    const comboColor =
-      combo >= 15 ? '#ffffff' :
-      combo >= 10 ? COLORS.gold :
-      combo >= 5  ? '#ffdf8a' :
-      combo > 0   ? COLORS.amber :
-      COLORS.amberDim;
-  
-    return (
-      <div style={{
-        textAlign: 'center',
-        minHeight: 56,
-        display: 'flex', flexDirection: 'column', justifyContent: 'center',
-        overflow: 'hidden', // prevents scale() animation from overflowing
-        position: 'relative',
-      }}>
-        {combo > 0 ? (
-          <>
-            <div style={{
-              fontSize: 32,
-              fontWeight: 800,
-              color: comboColor,
-              letterSpacing: '0.02em',
-              lineHeight: 1,
-              textShadow: `0 0 ${8 + combo * 1.5}px ${comboColor}`,
-              fontVariantNumeric: 'tabular-nums',
-            }}>
-              x{combo}
-              {(() => {
-                const bonus = Math.round(Math.min(combo * 0.02, 0.40) * 100);
-                return (
-                    <span style={{
-                    fontSize: 10, color: comboColor, letterSpacing: '0.2em',
-                    marginLeft: 12, opacity: 0.85, fontWeight: 600,
-                    }}>
-                    +{bonus}% VALUE{combo >= 20 ? ' [MAX]' : ''}
-                    </span>
-                );
-              })()}
-            </div>
-            <div style={{
-              width: 220, margin: '6px auto 0',
-              height: 2, background: COLORS.surfaceHigh,
-              position: 'relative', overflow: 'hidden',
-            }}>
-              <div style={{
-                width: `${comboPct}%`,
-                height: '100%',
-                background: comboColor,
-                boxShadow: `0 0 ${3 + combo}px ${comboColor}`,
-                transition: 'width 200ms linear',
-              }} />
-            </div>
-            {combo >= 20 && (
-              <div style={{
-                marginTop: 4, fontSize: 10, color: COLORS.zeroMessage,
-                fontWeight: 500, letterSpacing: '0.3em',
-                textShadow: `0 0 10px ${COLORS.zeroMessage}`,
-              }}>
-                [ZERO &gt;&gt;] Push further.
-              </div>
-            )}
-          </>
-        ) : showShatter ? (
-          <div
-            key={shatterKey}
-            style={{
-              fontSize: 32, fontWeight: 800, color: COLORS.amberDim,
-              letterSpacing: '0.02em',
-              animation: 'shatter 500ms ease-out both',
-              lineHeight: 1,
-              transformOrigin: 'center',
-            }}
-          >
-            x0
+      return () => clearTimeout(t);
+    }
+    prevShatterKey.current = shatterKey;
+  }, [shatterKey]);
+
+  const comboPct = Math.min(100, (comboTimer / 4000) * 100);
+
+  // State machine — matches gameLogic.js getComboState/getComboMult
+  const cState =
+    combo >= 16 ? 'BURNING'    :
+    combo >= 6  ? 'AGGRESSIVE' :
+    combo > 0   ? 'STEALTH'    : 'IDLE';
+
+  const mult =
+    combo >= 16 ? 3.0 :
+    combo >= 6  ? 1.5 + Math.min((combo - 6) * 0.05, 0.5) :
+    combo > 0   ? 1.0 + Math.min(combo * 0.04, 0.20) : 1.0;
+
+  const stateMeta = {
+    BURNING:    { color: COLORS.red,   label: '! BURNING !',  hint: '+2.0 HEAT/CLICK · STOP OR BUST' },
+    AGGRESSIVE: { color: COLORS.amber, label: 'AGGRESSIVE',   hint: '+0.5 HEAT/CLICK' },
+    STEALTH:    { color: COLORS.green, label: 'STEALTH',      hint: 'INVISIBLE' },
+    IDLE:       { color: COLORS.amberDim, label: '',          hint: '' },
+  }[cState];
+
+  return (
+    <div style={{
+      textAlign: 'center',
+      minHeight: 64,
+      display: 'flex', flexDirection: 'column', justifyContent: 'center',
+      overflow: 'hidden',
+      position: 'relative',
+      animation: cState === 'BURNING'
+        ? 'comboBurningPulse 0.4s ease-in-out infinite'
+        : cState === 'AGGRESSIVE'
+          ? 'comboAggressivePulse 1.1s ease-in-out infinite'
+          : undefined,
+      padding: '4px 0',
+    }}>
+      {combo > 0 ? (
+        <>
+          {/* Top: state label */}
+          <div style={{
+            fontSize: 9,
+            letterSpacing: '0.3em',
+            fontWeight: 800,
+            color: stateMeta.color,
+            marginBottom: 2,
+            textShadow: cState === 'BURNING' ? `0 0 8px ${stateMeta.color}` : 'none',
+          }}>
+            :: {stateMeta.label}
           </div>
-        ) : (
-          <div style={{ fontSize: 10, color: COLORS.amberDim, letterSpacing: '0.3em', opacity: 0.6 }}>
-            :: CHAIN_IDLE ::
+
+          {/* Combo count + mult */}
+          <div style={{
+            fontSize: 32,
+            fontWeight: 800,
+            color: stateMeta.color,
+            letterSpacing: '0.02em',
+            lineHeight: 1,
+            textShadow: `0 0 ${cState === 'BURNING' ? 16 : 8 + combo * 0.6}px ${stateMeta.color}`,
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            ×{combo}
+            <span style={{
+              fontSize: 13, color: stateMeta.color, letterSpacing: '0.15em',
+              marginLeft: 12, opacity: 0.95, fontWeight: 700,
+            }}>
+              ×{mult.toFixed(1)} REWARD
+            </span>
           </div>
-        )}
-      </div>
-    );
-  }
+
+          {/* Risk hint */}
+          <div style={{
+            fontSize: 8,
+            letterSpacing: '0.2em',
+            fontWeight: cState === 'BURNING' ? 800 : 500,
+            color: stateMeta.color,
+            marginTop: 4,
+            opacity: cState === 'STEALTH' ? 0.65 : 1,
+          }}>
+            {stateMeta.hint}
+          </div>
+
+          {/* Combo timer bar */}
+          <div style={{
+            width: 220, margin: '6px auto 0',
+            height: 2, background: COLORS.surfaceHigh,
+            position: 'relative', overflow: 'hidden',
+          }}>
+            <div style={{
+              width: `${comboPct}%`,
+              height: '100%',
+              background: stateMeta.color,
+              boxShadow: `0 0 ${3 + (cState === 'BURNING' ? 8 : 0)}px ${stateMeta.color}`,
+              transition: 'width 200ms linear',
+            }} />
+          </div>
+        </>
+      ) : showShatter ? (
+        <div
+          key={shatterKey}
+          style={{
+            fontSize: 32, fontWeight: 800, color: COLORS.amberDim,
+            letterSpacing: '0.02em',
+            animation: 'shatter 500ms ease-out both',
+            lineHeight: 1,
+            transformOrigin: 'center',
+          }}
+        >
+          ×0
+        </div>
+      ) : (
+        <div style={{ fontSize: 10, color: COLORS.amberDim, letterSpacing: '0.3em', opacity: 0.6 }}>
+          :: CHAIN_IDLE ::
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── PRIMARY ACTIONS ───────────────────────────────────────────────────────
 function PrimaryActionGrid({ state, dispatchWithSound, isBlocked, combo }) {
@@ -382,6 +454,8 @@ function PrimaryActionGrid({ state, dispatchWithSound, isBlocked, combo }) {
   const ghostProtocol = state.upgrades?.ghostProtocol ?? 0;
   const hasNetScanner = (state.intelUpgrades?.netScanner ?? 0) >= 1;
   const siphonCost = (state.prestigePerks ?? {}).GHOST_STEP ? 8 : 10;
+  const protoMod = (PROTOCOL_DEFS[state.activeProtocol ?? 'NONE']?.successRateMod) ?? 0;
+  
 
   const maxInv = 12 + (state.upgrades?.voidDrive ?? 0) * 2;
   const invFull = state.inventory.length >= maxInv;
@@ -396,7 +470,8 @@ function PrimaryActionGrid({ state, dispatchWithSound, isBlocked, combo }) {
       color: COLORS.amber,
       primary: true,
       unlocked: true,
-      chance: hasNetScanner ? Math.round(effectiveSuccessRate(0.70, state.level, 0.03, heat, ghostProtocol) * 100) : null,
+      chance: hasNetScanner ? Math.round(effectiveSuccessRate(0.70, state.level, 0.03, heat, ghostProtocol, false, protoMod) * 100) : null,
+      chanceMod: protoMod,
       canRun: !isBlocked && state.stamina >= siphonCost && !invFull,
       lockReason: isBlocked ? 'LOCKED' : state.stamina < siphonCost ? 'LOW_STA' : invFull ? 'INV_FULL' : null,
     },
@@ -408,7 +483,8 @@ function PrimaryActionGrid({ state, dispatchWithSound, isBlocked, combo }) {
       desc: 'Crack premium vault — higher value',
       color: COLORS.red,
       unlocked: isUnlocked(state, 'breach'),
-      chance: hasNetScanner ? Math.round(effectiveSuccessRate(0.55, state.level, 0.04, heat) * 100) : null,
+      chance: hasNetScanner ? Math.round(effectiveSuccessRate(0.55, state.level, 0.04, heat, 0, false, protoMod) * 100) : null,
+      chanceMod: protoMod,
       canRun: !isBlocked && state.stamina >= 25 && !invFull,
       lockReason: isBlocked ? 'LOCKED' : state.stamina < 25 ? 'LOW_STA' : invFull ? 'INV_FULL' : null,
     },
@@ -420,7 +496,8 @@ function PrimaryActionGrid({ state, dispatchWithSound, isBlocked, combo }) {
       desc: 'Penetrate secondary firewall',
       color: COLORS.cyan,
       unlocked: isUnlocked(state, 'deep_siphon'),
-      chance: hasNetScanner ? Math.round(effectiveSuccessRate(0.65, state.level, 0.03, heat) * 100) : null,
+      chance: hasNetScanner ? Math.round(effectiveSuccessRate(0.65, state.level, 0.03, heat, 0, false, protoMod) * 100) : null,
+      chanceMod: protoMod,
       canRun: !isBlocked && state.stamina >= 15 && !invFull,
       lockReason: isBlocked ? 'LOCKED' : state.stamina < 15 ? 'LOW_STA' : invFull ? 'INV_FULL' : null,
     },
@@ -432,7 +509,8 @@ function PrimaryActionGrid({ state, dispatchWithSound, isBlocked, combo }) {
       desc: 'The ultimate heist',
       color: COLORS.purple,
       unlocked: isUnlocked(state, 'mainframe'),
-      chance: hasNetScanner ? Math.round(effectiveSuccessRate(0.35, state.level, 0.03, heat) * 100) : null,
+      chance: hasNetScanner ? Math.round(effectiveSuccessRate(0.35, state.level, 0.03, heat, 0, false, protoMod) * 100) : null,
+      chanceMod: protoMod,
       canRun: !isBlocked && state.stamina >= 40 && !invFull,
       lockReason: isBlocked ? 'LOCKED' : state.stamina < 40 ? 'LOW_STA' : invFull ? 'INV_FULL' : null,
     },
@@ -507,8 +585,18 @@ function ActionButton({ action, onClick }) {
           {action.label}
         </span>
         {action.chance !== null && action.chance !== undefined && (
-          <span style={{ fontSize: 10, letterSpacing: '0.15em', opacity: hovered ? 0.95 : 0.85 }}>
+          <span style={{ fontSize: 10, letterSpacing: '0.15em', opacity: hovered ? 0.95 : 0.85, display: 'inline-flex', alignItems: 'baseline', gap: 4 }}>
             {action.chance}%
+            {action.chanceMod < 0 && (
+              <span style={{ fontSize: 8, color: hovered ? '#000' : COLORS.red, fontWeight: 800, letterSpacing: '0.1em' }}>
+                {Math.round(action.chanceMod * 100)}%
+              </span>
+            )}
+            {action.chanceMod > 0 && (
+              <span style={{ fontSize: 8, color: hovered ? '#000' : COLORS.green, fontWeight: 800, letterSpacing: '0.1em' }}>
+                +{Math.round(action.chanceMod * 100)}%
+              </span>
+            )}
           </span>
         )}
       </div>
@@ -632,11 +720,8 @@ function SecondaryActionGrid({ state, dispatchWithSound, isBlocked }) {
             <button
               key={action.id}
               onClick={action.canRun ? () => {
+                audioManager.tab(); // Zvuk pri kliknutí na sekundárnu akciu
                 if (action.payload) {
-                  // For MANUAL_COOL we pass targetId directly as action
-                  // (reducer receives action object with spread)
-                  // But since original reducer uses action.type only for MANUAL_COOL,
-                  // we dispatch a clean action:
                   dispatchWithSound({ type: action.id, ...action.payload });
                 } else {
                   dispatchWithSound({ type: action.id });

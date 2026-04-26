@@ -7,6 +7,10 @@ import { COLORS } from './colors.js';
 // ─── Number formatter ──────────────────────────────────────────────────────
 export function fmt(n) {
   if (n == null || isNaN(n)) return '0';
+  const useScientific = typeof window !== 'undefined' && localStorage.getItem('sg_scientific') === '1';
+  if (useScientific && Math.abs(n) >= 1e6) {
+    return n.toExponential(2).replace('+', '');
+  }
   const abs = Math.abs(n);
   if (abs >= 1e9) return (n / 1e9).toFixed(2) + 'B';
   if (abs >= 1e6) return (n / 1e6).toFixed(2) + 'M';
@@ -212,6 +216,48 @@ export function Divider({ label, color = COLORS.amberDim }) {
       </span>
       <span style={{ flex: 1, height: 1, background: `${color}33` }} />
     </div>
+  );
+}
+
+// ─── Glow helpers ──────────────────────────────────────────────────────────
+// Consistent glow intensity across the app. Use in hover/active states.
+export const GLOW = {
+  subtle:  (c) => `0 0 6px ${c}33`,
+  medium:  (c) => `0 0 12px ${c}66`,
+  strong:  (c) => `0 0 20px ${c}aa, 0 0 40px ${c}44`,
+  inset:   (c) => `inset 0 0 12px ${c}22`,
+};
+
+// ─── Hex — hexagonal decoration (cyberpunk staple) ────────────────────────
+export function Hex({ size = 16, color = COLORS.amber, filled = false, glow = false }) {
+  const w = size;
+  const h = size * 0.866;
+  return (
+    <svg width={w} height={h} viewBox="0 0 100 86.6" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+      <polygon
+        points="25,0 75,0 100,43.3 75,86.6 25,86.6 0,43.3"
+        stroke={color}
+        strokeWidth="3"
+        fill={filled ? color : 'none'}
+        style={{ filter: glow ? `drop-shadow(0 0 4px ${color})` : 'none' }}
+      />
+    </svg>
+  );
+}
+
+// ─── Bracket — HUD corner bracket ─────────────────────────────────────────
+export function HudBracket({ size = 8, color = COLORS.amber, position = 'tl' }) {
+  const stroke = 1;
+  const d = {
+    tl: `M 0 ${size} L 0 0 L ${size} 0`,
+    tr: `M ${size} ${size} L ${size} 0 L 0 0`,
+    bl: `M 0 0 L 0 ${size} L ${size} ${size}`,
+    br: `M 0 0 L ${size} 0 L ${size} ${size} L 0 ${size}`,
+  }[position];
+  return (
+    <svg width={size} height={size} style={{ position: 'absolute', pointerEvents: 'none' }}>
+      <path d={d} stroke={color} strokeWidth={stroke} fill="none" opacity="0.7" />
+    </svg>
   );
 }
 

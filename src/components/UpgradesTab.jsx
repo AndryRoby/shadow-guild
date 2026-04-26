@@ -1,6 +1,6 @@
 // UPGRADES tab: buy permanent upgrades in 4 categories + intel upgrades (REP).
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Shield, Coins, Heart, Cpu, Eye,
   Lock, TrendingUp, Flame, Zap, Activity,
@@ -13,7 +13,9 @@ import {
   getIntelUpgradeCost,
   UPGRADE_DEFS,
   INTEL_UPGRADE_DEFS,
+  REVEAL_DEFS,
 } from '../gameLogic.js';
+import { audioManager } from '../audio/AudioManager.js';
 
 // ─── Category configuration ────────────────────────────────────────────────
 const CATEGORIES = [
@@ -53,8 +55,10 @@ const CATEGORIES = [
 
 // ─── Main ──────────────────────────────────────────────────────────────────
 export function UpgradesTab({ state, dispatchWithSound }) {
+  const [subTab, setSubTab] = useState('ENHANCEMENTS'); // ENHANCEMENTS | REVEALS
   const upgrades = state.upgrades ?? {};
   const intelUpgrades = state.intelUpgrades ?? {};
+  const reveals = state.reveals ?? {};
 
   // Summary stats
   const summary = useMemo(() => {
@@ -70,6 +74,8 @@ export function UpgradesTab({ state, dispatchWithSound }) {
     }
     return { totalLevels, maxLevels, pct: Math.round((totalLevels / maxLevels) * 100) };
   }, [upgrades, intelUpgrades]);
+
+  const revealsOwned = REVEAL_DEFS.filter(r => reveals[r.id]).length;
 
   return (
     <div style={{
@@ -89,46 +95,244 @@ export function UpgradesTab({ state, dispatchWithSound }) {
             UPGRADE_MATRIX
           </div>
           <div style={{ fontSize: 10, color: COLORS.amberDim, marginTop: 3, letterSpacing: '0.1em' }}>
-            Permanent enhancements. Purchased levels carry across prestige.
+            {subTab === 'ENHANCEMENTS'
+              ? 'Permanent enhancements. Purchased levels carry across prestige.'
+              : 'Software modules. Reveal panels and unlock automation.'}
           </div>
         </div>
 
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: COLORS.amber, fontVariantNumeric: 'tabular-nums' }}>
-            {summary.totalLevels}<span style={{ fontSize: 11, color: COLORS.amberDim, marginLeft: 4 }}>/{summary.maxLevels}</span>
-          </div>
-          <div style={{ fontSize: 9, color: COLORS.amberDim, letterSpacing: '0.15em' }}>
-            {summary.pct}% COMPLETE
-          </div>
+          {subTab === 'ENHANCEMENTS' ? (
+            <>
+              <div style={{ fontSize: 20, fontWeight: 800, color: COLORS.amber, fontVariantNumeric: 'tabular-nums' }}>
+                {summary.totalLevels}<span style={{ fontSize: 11, color: COLORS.amberDim, marginLeft: 4 }}>/{summary.maxLevels}</span>
+              </div>
+              <div style={{ fontSize: 9, color: COLORS.amberDim, letterSpacing: '0.15em' }}>
+                {summary.pct}% COMPLETE
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 20, fontWeight: 800, color: COLORS.cyan, fontVariantNumeric: 'tabular-nums' }}>
+                {revealsOwned}<span style={{ fontSize: 11, color: COLORS.amberDim, marginLeft: 4 }}>/{REVEAL_DEFS.length}</span>
+              </div>
+              <div style={{ fontSize: 9, color: COLORS.amberDim, letterSpacing: '0.15em' }}>
+                MODULES INSTALLED
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* ─── CATEGORIES ────────────────────────────── */}
-      {CATEGORIES.map(cat => {
-        const catUpgrades = cat.members
-          .map(key => UPGRADE_DEFS.find(u => u.key === key))
-          .filter(Boolean);
-
-        if (catUpgrades.length === 0) return null;
-
-        return (
-          <Category
-            key={cat.id}
-            category={cat}
-            upgrades={catUpgrades}
-            state={state}
-            dispatchWithSound={dispatchWithSound}
+      {/* ─── SUB-TAB PILLS ─────────────────────────── */}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <SubTabPill
+          label="ENHANCEMENTS"
+          color={COLORS.amber}
+          active={subTab === 'ENHANCEMENTS'}
+          onClick={() => { setSubTab('ENHANCEMENTS'); audioManager.tab(); }}
+        />
+        {(state.level ?? 1) >= 5 && (
+          <SubTabPill
+            label="REVEALS"
+            color={COLORS.cyan}
+            active={subTab === 'REVEALS'}
+            onClick={() => { setSubTab('REVEALS'); audioManager.tab(); }}
+            badge={revealsOwned < REVEAL_DEFS.length && REVEAL_DEFS.some(r => !reveals[r.id] && state.gold >= r.cost) ? '!' : null}
           />
-        );
-      })}
+        )}
+      </div>
 
-      {/* ─── INTEL UPGRADES ─────────────────────────── */}
-      {isUnlocked(state, 'intel') && (
-        <IntelSection
+      {/* ─── CONTENT: ENHANCEMENTS ────────────────── */}
+      {subTab === 'ENHANCEMENTS' && (
+        <>
+          {CATEGORIES.map(cat => {
+            const catUpgrades = cat.members
+              .map(key => UPGRADE_DEFS.find(u => u.key === key))
+              .filter(Boolean);
+
+            if (catUpgrades.length === 0) return null;
+
+            return (
+              <Category
+                key={cat.id}
+                category={cat}
+                upgrades={catUpgrades}
+                state={state}
+                dispatchWithSound={dispatchWithSound}
+              />
+            );
+          })}
+
+          {/* Intel sub-section */}
+          {isUnlocked(state, 'intel') && (
+            <IntelSection
+              state={state}
+              dispatchWithSound={dispatchWithSound}
+            />
+          )}
+        </>
+      )}
+
+      {/* ─── CONTENT: REVEALS ────────────────────── */}
+      {subTab === 'REVEALS' && (
+        <RevealsSection
           state={state}
           dispatchWithSound={dispatchWithSound}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Sub-tab pill ──────────────────────────────────────────────────────────
+function SubTabPill({ label, color, active, onClick, badge }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: 1,
+        background: active ? color : 'transparent',
+        color: active ? '#000' : color,
+        border: `1px solid ${color}`,
+        padding: '8px 14px',
+        fontSize: 10,
+        letterSpacing: '0.25em',
+        fontWeight: 800,
+        fontFamily: 'inherit',
+        cursor: 'pointer',
+        position: 'relative',
+        transition: 'all 120ms',
+      }}
+    >
+      {label}
+      {badge && (
+        <span style={{
+          position: 'absolute',
+          top: -4, right: -4,
+          width: 14, height: 14,
+          background: COLORS.red,
+          color: '#fff',
+          fontSize: 9,
+          fontWeight: 800,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: `0 0 6px ${COLORS.red}`,
+        }}>
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+// ─── REVEALS section ───────────────────────────────────────────────────────
+function RevealsSection({ state, dispatchWithSound }) {
+  const reveals = state.reveals ?? {};
+  const branches = ['INTEL', 'AUTO', 'TWEAK'];
+  const branchMeta = {
+    INTEL: { color: COLORS.cyan,   label: 'INTELLIGENCE',  desc: 'Reveal hidden information panels' },
+    AUTO:  { color: COLORS.purple, label: 'AUTOMATION',    desc: 'Hands-off helpers' },
+    TWEAK: { color: COLORS.gold,   label: 'GAMEPLAY_TWEAK', desc: 'Modify core mechanics' },
+  };
+
+  return (
+    <>
+      {branches.map(branchKey => {
+        const meta = branchMeta[branchKey];
+        const branchReveals = REVEAL_DEFS.filter(r => r.branch === branchKey);
+        if (branchReveals.length === 0) return null;
+        const owned = branchReveals.filter(r => reveals[r.id]).length;
+
+        return (
+          <div key={branchKey}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '8px 12px',
+              background: `${meta.color}11`,
+              borderLeft: `4px solid ${meta.color}`,
+              marginBottom: 6,
+            }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: meta.color, letterSpacing: '0.2em' }}>
+                :: {meta.label}
+              </span>
+              <span style={{ flex: 1, fontSize: 9, color: COLORS.amberDim, fontStyle: 'italic' }}>
+                {meta.desc}
+              </span>
+              <Tag color={meta.color}>{owned}/{branchReveals.length}</Tag>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {branchReveals.map(def => (
+                <RevealRow
+                  key={def.id}
+                  def={def}
+                  isOwned={!!reveals[def.id]}
+                  canAfford={state.gold >= def.cost}
+                  onBuy={() => {
+                    audioManager.upgradeReveal(); // Pridaný špecifický zvuk pre Reveals
+                    dispatchWithSound({ type: 'BUY_REVEAL', revealId: def.id });
+                  }}
+                  color={meta.color}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+// ─── Reveal row ────────────────────────────────────────────────────────────
+function RevealRow({ def, isOwned, canAfford, onBuy, color }) {
+  return (
+    <div style={{
+      padding: '10px 12px',
+      background: isOwned ? `${color}0a` : COLORS.surface,
+      borderLeft: `2px solid ${isOwned ? color : COLORS.amberFaint}`,
+      display: 'flex', alignItems: 'center', gap: 12,
+      opacity: isOwned ? 0.85 : 1,
+    }}>
+      <div style={{
+        width: 28, height: 28,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        border: `1px solid ${color}55`,
+        color: isOwned ? color : COLORS.amberDim,
+        fontSize: 16,
+        flexShrink: 0,
+        background: isOwned ? `${color}1a` : 'transparent',
+      }}>
+        {def.icon}
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: isOwned ? color : COLORS.amber, letterSpacing: '0.05em' }}>
+            {def.label}
+          </span>
+          {isOwned && <Tag color={COLORS.green}>INSTALLED</Tag>}
+        </div>
+        <div style={{ fontSize: 9, color: COLORS.amberDim, marginTop: 3, fontStyle: 'italic', lineHeight: 1.4 }}>
+          {def.flavor}
+        </div>
+      </div>
+
+      <div style={{ flexShrink: 0 }}>
+        {isOwned ? (
+          <span style={{ fontSize: 9, color: COLORS.green, letterSpacing: '0.2em', fontWeight: 700 }}>
+            ◆ ACTIVE
+          </span>
+        ) : (
+          <BBtn
+            size="sm"
+            variant={canAfford ? 'cyan' : 'ghost'}
+            disabled={!canAfford}
+            onClick={onBuy}
+          >
+            {fmt(def.cost)} CR
+          </BBtn>
+        )}
+      </div>
     </div>
   );
 }
@@ -281,6 +485,53 @@ function UpgradeRow({ def, level, gold, accent, onBuy }) {
 
 // ─── Level progress (filled blocks) ────────────────────────────────────────
 function LevelProgress({ level, max, color }) {
+  // Binary upgrades (max=1): clean owned/unowned badge
+  if (max === 1) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+        <span style={{
+          fontSize: 10,
+          color: level > 0 ? color : COLORS.amberDim,
+          letterSpacing: '0.18em', fontWeight: 800,
+          padding: '2px 6px',
+          border: `1px solid ${level > 0 ? color : COLORS.amberLine}`,
+          boxShadow: level > 0 ? `0 0 6px ${color}66` : 'none',
+        }}>
+          {level > 0 ? '◆ OWNED' : '○ AVAIL'}
+        </span>
+      </div>
+    );
+  }
+
+  // Compact progress bar for max > 8 (saves horizontal space)
+  if (max > 8) {
+    const pct = (level / max) * 100;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, minWidth: 70 }}>
+        <div style={{
+          width: 70, height: 6,
+          background: COLORS.surfaceHigh,
+          border: `1px solid ${COLORS.amberLine}`,
+          position: 'relative', overflow: 'hidden',
+        }}>
+          <div style={{
+            width: `${pct}%`, height: '100%',
+            background: color,
+            boxShadow: `0 0 6px ${color}`,
+            transition: 'width 200ms',
+          }} />
+        </div>
+        <div style={{
+          fontSize: 8, color: COLORS.amberDim,
+          letterSpacing: '0.15em', fontVariantNumeric: 'tabular-nums',
+        }}>
+          LV {level}/{max}
+        </div>
+      </div>
+    );
+  }
+
+  // Block display for max 2-8
   const blocks = [];
   for (let i = 0; i < max; i++) {
     blocks.push(

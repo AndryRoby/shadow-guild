@@ -1,6 +1,6 @@
 // AWAKENING tab: prestige mechanic + permanent perk tree.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Star, Zap, Shield, Cpu, Eye,
   Coins, TrendingUp, Lock, Activity,
@@ -8,6 +8,7 @@ import {
 
 import { Panel, Tag, DataBar, BBtn, fmt, COLORS } from '../design/primitives.jsx';
 import { PRESTIGE_PERK_DEFS } from '../gameLogic.js';
+import { PerkTreeModal } from './PerkTreeModal.jsx';
 
 // ─── Branch configuration ──────────────────────────────────────────────────
 const BRANCHES = {
@@ -29,6 +30,12 @@ const BRANCHES = {
     color: COLORS.purple,
     icon: Cpu,
   },
+  UNIVERSAL: {
+    label: 'VOID',
+    desc: 'Beyond the cycles — prestige 3+ perks.',
+    color: COLORS.red,
+    icon: Zap,
+  },
 };
 
 // ─── Flavor messages based on prestige count ──────────────────────────────
@@ -41,8 +48,77 @@ function getFlavorText(prestige) {
   return '"You have been doing this longer than anyone alive. Why are you still here?"';
 }
 
+function RespecButton({ state, dispatchWithSound }) {
+    const [confirm, setConfirm] = useState(false);
+    const ownedCount = Object.keys(state.prestigePerks ?? {}).length;
+    const cost = 10000 * ownedCount;
+    const canAfford = (state.gold ?? 0) >= cost;
+    const used = !!state.respecUsed;
+  
+    if (used) {
+      return (
+        <div style={{
+          padding: '8px 12px',
+          border: `1px dashed ${COLORS.amberDim}`,
+          fontSize: 10, color: COLORS.amberDim,
+          letterSpacing: '0.15em', textAlign: 'center',
+        }}>
+          :: RESPEC_EXHAUSTED — resets next Awakening
+        </div>
+      );
+    }
+  
+    return (
+      <div style={{
+        padding: 10,
+        border: `1px solid ${COLORS.red}33`,
+        background: `${COLORS.red}05`,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: confirm ? 10 : 0 }}>
+          <div>
+            <div style={{ fontSize: 10, color: COLORS.red, letterSpacing: '0.2em', fontWeight: 700 }}>
+              :: RESPEC_PERKS
+            </div>
+            <div style={{ fontSize: 9, color: COLORS.amberDim, marginTop: 2, fontStyle: 'italic' }}>
+              Refund {ownedCount} perk{ownedCount > 1 ? 's' : ''}. Once per run.
+            </div>
+          </div>
+          {!confirm ? (
+            <BBtn
+              size="sm"
+              variant="danger"
+              disabled={!canAfford}
+              onClick={() => setConfirm(true)}
+            >
+              {fmt(cost)} CR
+            </BBtn>
+          ) : null}
+        </div>
+        {confirm && (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <BBtn
+              size="sm"
+              variant="danger"
+              full
+              onClick={() => {
+                dispatchWithSound({ type: 'RESPEC_PRESTIGE_PERKS' });
+                setConfirm(false);
+              }}
+            >
+              CONFIRM RESPEC
+            </BBtn>
+            <BBtn size="sm" variant="ghost" full onClick={() => setConfirm(false)}>
+              CANCEL
+            </BBtn>
+          </div>
+        )}
+      </div>
+    );
+  }
+
 // ─── Main ──────────────────────────────────────────────────────────────────
 export function AwakeningTab({ state, dispatchWithSound }) {
+  const [modalOpen, setModalOpen] = useState(false);
   const prestige = state.prestige ?? 0;
   const prestigePoints = state.prestigePoints ?? 0;
   const prestigeMult = state.prestigeMultiplier ?? 1;
@@ -88,7 +164,7 @@ export function AwakeningTab({ state, dispatchWithSound }) {
           fontSize: 11, color: COLORS.amberDim,
           marginTop: 10, letterSpacing: '0.05em',
           fontStyle: 'italic',
-          maxWidth: 520, margin: '10px auto 0',
+          maxWidth: 550, margin: '10px auto 0',
         }}>
           {getFlavorText(prestige)}
         </div>
@@ -101,7 +177,7 @@ export function AwakeningTab({ state, dispatchWithSound }) {
             border: `1px solid ${COLORS.gold}`,
             background: `${COLORS.gold}0a`,
           }}>
-            <span style={{ fontSize: 10, color: COLORS.amberDim, letterSpacing: '0.2em' }}>
+            <span style={{ fontSize: 12, color: COLORS.amberDim, letterSpacing: '0.2em' }}>
               CURRENT
             </span>
             <span style={{ fontSize: 12, color: COLORS.gold, fontWeight: 800, letterSpacing: '0.1em' }}>
@@ -221,29 +297,107 @@ export function AwakeningTab({ state, dispatchWithSound }) {
                 Permanent bonuses carried across all cycles
               </div>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{
-                fontSize: 18, fontWeight: 800,
-                color: prestigePoints > 0 ? COLORS.gold : COLORS.amberDim,
-                fontVariantNumeric: 'tabular-nums',
-              }}>
-                {prestigePoints}
-              </div>
-              <div style={{ fontSize: 9, color: COLORS.amberDim, letterSpacing: '0.15em' }}>
-                POINTS_AVAILABLE
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <button
+                onClick={() => setModalOpen(true)}
+                style={{
+                  background: 'transparent',
+                  border: `1px solid ${COLORS.gold}`,
+                  color: COLORS.gold,
+                  padding: '8px 14px',
+                  fontFamily: 'inherit',
+                  fontSize: 10,
+                  letterSpacing: '0.2em',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 120ms',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = COLORS.gold;
+                  e.currentTarget.style.color = '#000';
+                  e.currentTarget.style.boxShadow = `0 0 15px ${COLORS.gold}`;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = COLORS.gold;
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                ⛶ EXPAND_TREE
+              </button>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{
+                  fontSize: 18, fontWeight: 800,
+                  color: prestigePoints > 0 ? COLORS.gold : COLORS.amberDim,
+                  fontVariantNumeric: 'tabular-nums',
+                }}>
+                  {prestigePoints}
+                </div>
+                <div style={{ fontSize: 9, color: COLORS.amberDim, letterSpacing: '0.15em' }}>
+                  POINTS_AVAILABLE
+                </div>
               </div>
             </div>
           </div>
 
-          {Object.entries(BRANCHES).map(([branchKey, branch]) => (
-            <PerkBranch
-              key={branchKey}
-              branchKey={branchKey}
-              branch={branch}
-              state={state}
-              dispatchWithSound={dispatchWithSound}
-            />
-          ))}
+          {/* ── RESPEC ─────────────────────────────────── */}
+          {Object.keys(state.prestigePerks ?? {}).length > 0 && (
+            <RespecButton state={state} dispatchWithSound={dispatchWithSound} />
+          )}
+
+        {/* Plain perk list — modal handles full tree view */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {Object.entries(BRANCHES)
+              .filter(([branchKey]) => {
+                if (branchKey === 'UNIVERSAL') {
+                  const perks = PRESTIGE_PERK_DEFS.filter(p => p.branch === 'UNIVERSAL');
+                  return perks.some(p => (state.prestige ?? 0) >= (p.requiresPrestige ?? 0));
+                }
+                return true;
+              })
+              .map(([branchKey, branch]) => {
+                const { icon: Icon, color, label } = branch;
+                const branchPerks = PRESTIGE_PERK_DEFS
+                  .filter(d => d.branch === branchKey)
+                  .filter(d => (state.prestige ?? 0) >= (d.requiresPrestige ?? 0));
+                const owned = state.prestigePerks ?? {};
+                const ownedCount = branchPerks.filter(p => owned[p.id]).length;
+
+                return (
+                  <div key={branchKey} style={{ marginTop: 12 }}>
+                    {/* Branch header */}
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '6px 10px',
+                      background: `${color}11`,
+                      borderLeft: `4px solid ${color}`,
+                      marginBottom: 4,
+                    }}>
+                      <Icon size={14} color={color} />
+                      <span style={{ fontSize: 12, fontWeight: 800, color, letterSpacing: '0.2em' }}>
+                        :: {label}
+                      </span>
+                      <span style={{ flex: 1 }} />
+                      <Tag color={color}>{ownedCount}/{branchPerks.length}</Tag>
+                    </div>
+
+                    {/* Perk rows */}
+                    {branchPerks.map(def => (
+                      <PerkRow
+                        key={def.id}
+                        def={def}
+                        isOwned={!!owned[def.id]}
+                        canAfford={prestigePoints >= (def.cost ?? 1)}
+                        levelMet={state.level >= (def.reqLevel ?? 1)}
+                        playerLevel={state.level}
+                        color={color}
+                        onBuy={() => dispatchWithSound({ type: 'BUY_PRESTIGE_PERK', perkId: def.id })}
+                      />
+                    ))}
+                  </div>
+                );
+              })}
+          </div>
         </>
       )}
 
@@ -263,6 +417,15 @@ export function AwakeningTab({ state, dispatchWithSound }) {
             Choose your path: GHOST, OVERLORD, or ARCHITECT.
           </div>
         </div>
+      )}
+
+      {/* ↓↓↓ PRIDAJ TOTO ↓↓↓ */}
+      {modalOpen && (
+        <PerkTreeModal
+          state={state}
+          dispatchWithSound={dispatchWithSound}
+          onClose={() => setModalOpen(false)}
+        />
       )}
     </div>
   );
@@ -356,61 +519,6 @@ function RewardCell({ icon: Icon, label, value, color }) {
   );
 }
 
-// ─── Perk branch ───────────────────────────────────────────────────────────
-function PerkBranch({ branchKey, branch, state, dispatchWithSound }) {
-  const { icon: Icon, color } = branch;
-  const prestigePoints = state.prestigePoints ?? 0;
-  const owned = state.prestigePerks ?? {};
-  const perks = PRESTIGE_PERK_DEFS.filter(d => d.branch === branchKey);
-
-  const ownedCount = perks.filter(p => owned[p.id]).length;
-
-  return (
-    <div>
-      {/* Branch header */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '6px 10px',
-        background: `${color}11`,
-        borderLeft: `4px solid ${color}`,
-        marginBottom: 4,
-      }}>
-        <Icon size={14} color={color} />
-        <span style={{
-          fontSize: 12, fontWeight: 800, color,
-          letterSpacing: '0.2em',
-        }}>
-          :: {branch.label}
-        </span>
-        <span style={{
-          fontSize: 9, color: COLORS.amberDim,
-          letterSpacing: '0.05em', fontStyle: 'italic', opacity: 0.7,
-        }}>
-          {branch.desc}
-        </span>
-        <span style={{ flex: 1 }} />
-        <Tag color={color}>
-          {ownedCount}/{perks.length}
-        </Tag>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {perks.map(def => (
-          <PerkRow
-            key={def.id}
-            def={def}
-            isOwned={!!owned[def.id]}
-            canAfford={prestigePoints >= (def.cost ?? 1)}
-            levelMet={state.level >= (def.reqLevel ?? 1)}
-            playerLevel={state.level}
-            color={color}
-            onBuy={() => dispatchWithSound({ type: 'BUY_PRESTIGE_PERK', perkId: def.id })}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // ─── Perk row ──────────────────────────────────────────────────────────────
 function PerkRow({ def, isOwned, canAfford, levelMet, playerLevel, color, onBuy }) {
